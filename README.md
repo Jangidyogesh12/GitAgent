@@ -60,10 +60,10 @@ curl -fsSL https://raw.githubusercontent.com/Jangidyogesh12/GitAgent/master/inst
 # or: cargo install --path cli
 ```
 
-Releases are cut by pushing a version tag (`git tag v0.2.0 && git push
-origin master v0.2.0`) — the release workflow builds per-OS binaries,
-publishes them with checksums, and the remote installer picks the right
-one. See `.github/workflows/` (commented for learning).
+Releases are automatic: every merge to `master`/`main` bumps the patch
+version, tags `vX.Y.Z`, builds per-OS binaries, and publishes them with
+checksums — which is what the remote installer downloads. See
+`.github/workflows/` (commented for learning).
 
 The installer checks prerequisites, builds the release binary, installs it
 to `$HOME/.cargo/bin` (override with `GITAGENT_PREFIX=...`), then walks you

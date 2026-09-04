@@ -1,38 +1,76 @@
-# Release — build multi-OS binaries and publish installable artifacts.
+# Release — automatic release on every merge/push to the mainline branch.
 #
-# WHAT THIS DOES:
-#   1. Trigger: you push a tag like `v0.2.0` (see "Cutting a release" below).
-#   2. `build` job runs once PER MATRIX LEG (linux-x64, mac-arm64, windows-x64),
-#      each on its native runner — no cross-compilation toolchains needed:
-#        - check the tag matches `cli/Cargo.toml` version (fail fast on skew)
-#        - `cargo build --release --locked -p cli`
-#        - pack `gitagent[.exe]` into gitagent-<ver>-<target>.tar.gz (.zip)
-#        - append its sha256 to SHA256SUMS.txt, upload all as artifacts.
-#   3. `publish` job (runs after ALL legs pass): downloads artifacts,
-#      creates the GitHub Release with generated notes, uploads everything.
-#      Result: `installer/install-remote.sh` can curl these URLs.
+# WHAT THIS DOES (read top to bottom to learn GitHub Actions):
+#   1. Trigger: ANY push to `master` or `main` (i.e. every merged PR).
+#      No manual tagging — the workflow versions itself.
+#   2. `concurrency:` — merges landing back-to-back QUEUE instead of
+#      racing (two releases must never interleave).
+#   3. `version` job: read cli/Cargo.toml version → bump PATCH
+#      (0.1.0 → 0.1.1) → refresh Cargo.lock → commit BOTH with `[skip ci]`
+#      (that tag tells GitHub to NOT re-run any workflow for the bump
+#      commit — otherwise we'd loop forever) → tag `v<new>` → push
+#      commit + tag. Outputs `version`/`tag` for later jobs.
+#   4. `build` job: runs once PER MATRIX LEG on its native OS (no
+#      cross-compilation toolchains needed), packs
+#      gitagent-<ver>-<target>.tar.gz (.zip on Windows) + SHA256SUMS.txt,
+#      uploads them as artifacts.
+#   5. `publish` job (`needs:` = wait for version+build): downloads
+#      artifacts, creates the GitHub Release, uploads assets.
+#      `installer/install-remote.sh` then installs that release via curl.
 #
-# CUTTING A RELEASE (run locally):
-#   cargo test --workspace          # green first
-#   # bump version in cli/Cargo.toml (and core/sdk if you want them in sync)
-#   git add -A && git commit -m "release v0.2.0" && git tag v0.2.0 && git push origin master v0.2.0
-#
-# LEARN BY READING: compare with ci.yml — same steps vocabulary
-# (checkout → toolchain → run), plus `strategy.matrix` (fan-out),
-# `needs:` (ordering), `permissions:` (what the GITHUB_TOKEN may do),
-# and `gh release` (GitHub CLI is preinstalled on all runners).
+# LEARN BY READING: compare with ci.yml — same steps vocabulary, plus
+# `strategy.matrix` (fan-out), `needs:` (ordering), `outputs:` (passing
+# data between jobs), `permissions:` (what GITHUB_TOKEN may do),
+# `concurrency:` (serialising runs), and `gh release` (GitHub CLI is
+# preinstalled on all runners).
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [master, main] # mainline only — feature branches never release
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false # queue merges, never overlap two releases
 
 permissions:
-  contents: write # needed for `gh release create` + asset upload
+  contents: write # commit bump + push tag + create release + upload assets
 
 jobs:
+  version:
+    name: bump version + tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain (for Cargo.lock refresh)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Bump patch version, commit [skip ci], tag, push
+        id: bump
+        run: |
+          VER="$(grep '^version' cli/Cargo.toml | head -n 1 | sed 's/.*"\(.*\)"/\1/')"
+          NEW="$(echo "$VER" | awk -F. '{print $1"."$2"."$3+1}')"
+          echo "bumping $VER -> $NEW"
+          sed -i "s/^version = \"$VER\"$/version = \"$NEW\"/" cli/Cargo.toml
+          cargo check -p cli >/dev/null # refresh Cargo.lock for the new version
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add cli/Cargo.toml Cargo.lock
+          git commit -m "release: bump to v$NEW [skip ci]"
+          git tag "v$NEW"
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          git push origin "HEAD:$BRANCH" "v$NEW"
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
+
   build:
     name: build (${{ matrix.target }})
+    needs: version # wait for the tag before building it
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false # one OS failing must not cancel the others
@@ -56,15 +94,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Tag must match cli/Cargo.toml version
-        shell: bash
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          VER="${TAG#v}"
-          grep -q "^version = \"$VER\"$" cli/Cargo.toml \
-            || { echo "tag $TAG != cli version"; exit 1; }
-          echo "VERSION=$VER" >> "$GITHUB_ENV"
-
       - name: Build release binary
         run: cargo build --release --locked -p cli --target ${{ matrix.target }}
 
@@ -72,7 +101,7 @@ jobs:
         if: matrix.archive == 'tar.gz'
         shell: bash
         run: |
-          STAGE="gitagent-${{ env.VERSION }}-${{ matrix.target }}"
+          STAGE="gitagent-${{ needs.version.outputs.version }}-${{ matrix.target }}"
           mkdir -p "$STAGE"
           cp "target/${{ matrix.target }}/release/gitagent" "$STAGE/"
           tar czf "$STAGE.tar.gz" "$STAGE"
@@ -82,7 +111,7 @@ jobs:
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          $stage = "gitagent-$env:VERSION-${{ matrix.target }}"
+          $stage = "gitagent-${{ needs.version.outputs.version }}-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/gitagent.exe" $stage/
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
@@ -100,7 +129,7 @@ jobs:
 
   publish:
     name: publish GitHub Release
-    needs: build # wait for every OS leg
+    needs: [version, build] # wait for the tag AND every OS leg
     runs-on: ubuntu-latest
     steps:
       - name: Download all packages
@@ -113,6 +142,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          gh release create "$TAG" --title "$TAG" --generate-notes \
+          gh release create "${{ needs.version.outputs.tag }}" \
+            --title "${{ needs.version.outputs.tag }}" --generate-notes \
             gitagent-*.tar.gz gitagent-*.zip SHA256SUMS.txt
