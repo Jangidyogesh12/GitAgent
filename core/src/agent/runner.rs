@@ -1,5 +1,5 @@
 //! ============================================================================
-//! Module: engine::agent::agent
+//! Module: engine::agent::runner
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
 //!   The think → act → observe loop itself (Template Method pattern). Ports

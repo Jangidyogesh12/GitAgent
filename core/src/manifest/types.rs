@@ -1,5 +1,5 @@
 //! ============================================================================
-//! Module: engine::manifest::manifest
+//! Module: engine::manifest::types
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
 //!   The full `agent.yaml` manifest type + loading/saving. Ports the

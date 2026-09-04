@@ -35,9 +35,9 @@ Now trace one real call through exact functions (open each as you go):
 | 4 | `sdk/src/query.rs` | `build_registry()` | builtin + learning + YAML + plugin + MCP tools, allow→deny filter |
 | 5 | `sdk/src/permissions.rs`, `core/src/hooks/gate.rs` | `PermissionGate`, `HookGate` | policy chain for every tool call |
 | 6 | `core/src/llm/spec.rs` | `resolve_model()` | `"opencode/kimi-k2.6"` → URL + key |
-| 7 | `core/src/agent/agent.rs` | `Agent::prompt()` → `run_loop()` | the loop; emits `AgentEvent`s |
+| 7 | `core/src/agent/runner.rs` | `Agent::prompt()` → `run_loop()` | the loop; emits `AgentEvent`s |
 | 8 | `core/src/llm/fallback.rs` | `stream_once()` | SSE → `AssistantMessage` (text / tool calls) |
-| 9 | `core/src/agent/agent.rs` | `run_one()` | gates → timeout → `tool.execute()` → `ToolResult` |
+| 9 | `core/src/agent/runner.rs` | `run_one()` | gates → timeout → `tool.execute()` → `ToolResult` |
 | 10 | `cli/src/render.rs` | `render_stream()` | events → terminal output + exit code |
 
 Keep this table open while doing §2 — every stop below is one row zoomed in.
@@ -50,7 +50,7 @@ Read in this order. Each stop lists **files → look for → notice → try**.
 
 ### Stop 0 — The data: what an agent IS (10 min)
 - **Read:** `examples/demo-agent/agent.yaml`, `examples/demo-agent/SOUL.md`,
-  `core/src/manifest/manifest.rs` (`AgentManifest`, `scaffold()`,
+  `core/src/manifest/types.rs` (`AgentManifest`, `scaffold()`,
   `model_spec()`), `core/src/manifest/model.rs` (`provider_api_key()`).
 - **Notice:** the manifest is pure data, zero logic; `model_spec()` encodes
   the CLI-flag-beats-manifest precedence; adding a provider is one match arm
@@ -82,7 +82,7 @@ Read in this order. Each stop lists **files → look for → notice → try**.
 
 ### Stop 3 — The heart: loop + compaction (25 min)
 - **Read:** `core/src/agent/compact.rs` (`Compactor`: 75 % budget,
-  truncate-in-place, never drop a message), then `core/src/agent/agent.rs`
+  truncate-in-place, never drop a message), then `core/src/agent/runner.rs`
   (`LoopConfig`/`LoopContext`, `run_loop()`, `run_one()`, `Agent` builder).
 - **Notice:** Template Method — `run_loop` is a fixed skeleton, config
   injects the variable parts. Parallel batches serialize if ANY tool is
@@ -223,16 +223,16 @@ names its patterns; the map below is the complete index.
   `NoopClient` fakes it in tests), `SandboxExec`
   (`core/src/tools/cli.rs`; local shell vs remote-VM twin without
   duplicating timeout logic).
-- **Template Method** — `run_loop()` (`core/src/agent/agent.rs`) is the
+- **Template Method** — `run_loop()` (`core/src/agent/runner.rs`) is the
   fixed skeleton (steering → budget → ask model → run batch → repeat);
   `LoopConfig` injects client/compactor/gates/timeouts.
 - **Observer** — `AgentEvent` over tokio mpsc (`core/src/agent/event.rs`);
   the loop publishes, CLI renders, SDK maps to `SdkMessage`.
   Session/subject decoupling with zero callbacks.
-- **Builder** — `Agent::with_*` (`core/src/agent/agent.rs`),
+- **Builder** — `Agent::with_*` (`core/src/agent/runner.rs`),
   `PromptBuilder` (`core/src/loader/prompt.rs`), `QueryOptions::with_*`
   (`sdk/src/types.rs`), `AgentManifest::scaffold()`
-  (`core/src/manifest/manifest.rs`).
+  (`core/src/manifest/types.rs`).
 - **Factory** — `builtin_tools()` (`core/src/tools/factory.rs`),
   `resolve_model()` (`core/src/llm/spec.rs`), `adapter_for()`
   (`core/src/integrations/harness.rs`).

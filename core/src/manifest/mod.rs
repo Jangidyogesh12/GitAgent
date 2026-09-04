@@ -15,7 +15,7 @@
 //!
 //! MODULES PRESENT IN THIS CRATE:
 //!   * `model`    — ModelConfig + ModelConstraints + provider_key().
-//!   * `manifest` — AgentManifest + Dependency + load_manifest() + scaffold.
+//!   * `types` — AgentManifest + Dependency + load_manifest() + scaffold.
 //!
 //! HOW TO USE (example):
 //! ```rust,no_run
@@ -26,8 +26,8 @@
 //! ```
 //! ============================================================================
 
-pub mod manifest;
 pub mod model;
+pub mod types;
 
-pub use manifest::{load_manifest, save_manifest, AgentManifest, Dependency};
 pub use model::{provider_api_key, ModelConfig, ModelConstraints};
+pub use types::{load_manifest, save_manifest, AgentManifest, Dependency};

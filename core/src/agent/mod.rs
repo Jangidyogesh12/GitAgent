@@ -28,7 +28,7 @@
 //!   * `gate`     — ToolGate trait + GateDecision (beforeToolCall seam).
 //!   * `client`   — LlmClient Strategy trait (implemented by llm).
 //!   * `compact`  — Compactor (context-window budgeting, failsafe truncate).
-//!   * `agent`    — Agent stateful wrapper + `run_loop()` Template Method.
+//!   * `runner`   — Agent stateful wrapper + `run_loop()` Template Method.
 //!
 //! HOW TO USE (example):
 //! ```rust,no_run
@@ -38,15 +38,14 @@
 //! ```
 //! ============================================================================
 
-pub mod agent;
 pub mod client;
 pub mod compact;
 pub mod event;
 pub mod gate;
 pub mod message;
+pub mod runner;
 pub mod tool;
 
-pub use agent::{run_loop, Agent, LoopConfig, LoopContext};
 pub use client::{GenParams, LlmClient, NoopClient};
 pub use compact::Compactor;
 pub use event::{AgentEvent, DeltaKind};
@@ -54,4 +53,5 @@ pub use gate::{AllowAllGate, GateDecision, ToolGate};
 pub use message::{
     AgentMessage, AssistantMessage, ContentBlock, StopReason, ToolResultMessage, Usage,
 };
+pub use runner::{run_loop, Agent, LoopConfig, LoopContext};
 pub use tool::{AgentTool, ExecutionMode, ToolOutput};
