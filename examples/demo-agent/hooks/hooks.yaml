@@ -1,0 +1,4 @@
+hooks:
+  pre_tool_use:
+    - script: log.sh
+      description: Drain stdin and allow (no-op hook demo)

@@ -1,0 +1,22 @@
+spec_version: "0.1.0"
+name: demo
+version: 0.1.0
+description: Full-featured example agent showcasing skills, tools, hooks, plugins
+model:
+  preferred: openai:gpt-4o-mini
+  fallback: []
+  constraints:
+    temperature: 0.4
+    max_tokens: 2000
+tools:
+  - cli
+  - read
+  - write
+  - edit
+  - memory
+runtime:
+  max_turns: 30
+  timeout: 60
+plugins:
+  greeter:
+    enabled: true

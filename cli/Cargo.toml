@@ -1,0 +1,22 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2021"
+default-run = "gitagent"
+
+[[bin]]
+name = "gitagent"
+path = "src/main.rs"
+
+[dependencies]
+engine = { path = "../core" }
+sdk = { path = "../sdk" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+futures = { workspace = true }
+tokio-stream = { workspace = true }
+walkdir = { workspace = true }

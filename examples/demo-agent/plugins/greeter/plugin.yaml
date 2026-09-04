@@ -1,0 +1,9 @@
+id: greeter
+name: greeter
+version: 0.1.0
+description: Adds a greeting section to the system prompt
+provides:
+  tools: false
+  skills: false
+  prompt: prompt.md
+config: {}

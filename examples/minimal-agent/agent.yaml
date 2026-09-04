@@ -1,0 +1,14 @@
+spec_version: "0.1.0"
+name: minimal
+version: 0.1.0
+description: Minimal example agent — the smallest repo gitagent accepts
+model:
+  preferred: openai:gpt-4o-mini
+  fallback: []
+tools:
+  - cli
+  - read
+  - write
+  - memory
+runtime:
+  max_turns: 20

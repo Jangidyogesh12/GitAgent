@@ -1,0 +1,2 @@
+name: helper
+description: Tiny sub-agent that echoes a task back (delegation demo)

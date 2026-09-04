@@ -1,0 +1,12 @@
+name: shout
+description: Echo the input JSON back in UPPERCASE (declarative tool demo)
+input_schema:
+  type: object
+  properties:
+    text:
+      type: string
+      description: Text to shout
+  required: [text]
+implementation:
+  script: shout.sh
+  runtime: sh

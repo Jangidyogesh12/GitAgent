@@ -1,0 +1,7 @@
+entries:
+  - path: knowledge/about.md
+    priority: high
+    always_load: true
+  - path: knowledge/roadmap.md
+    priority: low
+    always_load: false

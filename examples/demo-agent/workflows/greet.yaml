@@ -1,0 +1,5 @@
+name: greet
+description: Greet the user, then summarize one file with the summarizer skill
+steps:
+  - skill: summarizer
+    prompt: Summarize knowledge/about.md for a newcomer
