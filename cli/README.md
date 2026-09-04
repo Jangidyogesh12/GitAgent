@@ -1,8 +1,8 @@
 # `gitagent` CLI — user manual
 
 The `gitagent` binary (crate `cli`) is the terminal front end.
-All agent logic lives in `sdk` and the library crates; this page
-covers installation, flags, the REPL, plugins, and harness export.
+All agent logic lives in `sdk` and `engine`; this page covers install,
+flags, providers, REPL, plugins, and harness export.
 
 ## Install
 
@@ -12,9 +12,6 @@ covers installation, flags, the REPL, plugins, and harness export.
 # or manually:
 cargo install --path cli
 ```
-
-Requires an LLM key, e.g. `export OPENAI_API_KEY="sk-..."` (or Anthropic /
-Lyzr equivalents — see "Models").
 
 ## Quick start
 
@@ -27,12 +24,39 @@ gitagent --dir ~/my-project "Explain this project"
 gitagent --dir ~/my-agent
 ```
 
+## Providers — how to run with each one
+
+Pick with `--model` (or `agent.yaml → model.preferred`). Accepted forms:
+`provider:model`, `provider/model`, `provider:model@base-url`.
+
+| Provider | Command | Key |
+|---|---|---|
+| OpenAI | `--model "openai:gpt-4o-mini"` | `OPENAI_API_KEY` |
+| Anthropic | `--model "anthropic:claude-sonnet-4-6"` | `ANTHROPIC_API_KEY` |
+| Google | `--model "google:gemini-2.0-flash"` | `GEMINI_API_KEY` |
+| xAI / Groq / Mistral | `--model "xai:grok-4"`, `"groq:…"`, `"mistral:…"` | `XAI_API_KEY` / `GROQ_API_KEY` / `MISTRAL_API_KEY` |
+| Ollama (local, keyless) | `--model "ollama:llama3.2:3b"` | none (needs `ollama serve`) |
+| Lyzr | `--model "lyzr:<agent-id>@https://agent-prod.studio.lyzr.ai/v4"` | `LYZR_API_KEY` |
+| OpenCode Zen | `--model "opencode/kimi-k2.6"` | `OPENCODE_API_KEY` |
+| OpenCode Go | `--model "opencode-go/kimi-k2.6"` | `OPENCODE_API_KEY` (Go key) |
+| Any gateway | `--model "openai:<id>@http://host:port/v1"` | key via `OPENAI_API_KEY` |
+
+```bash
+export OPENCODE_API_KEY="..."   # Zen key from opencode.ai/auth
+gitagent --dir ./my-agent --model "opencode/kimi-k2.6" "Explain this project"
+```
+
+Only OpenAI-`chat/completions`-speaking models work: Zen/Go GPT, Claude,
+Gemini and MiniMax/Qwen-on-`/messages` use other protocols — use those
+providers' native keys instead. A missing key exits 1 naming the variable;
+a rejected call prints `error: …` (never silent).
+
 ## Flags
 
 | Flag | Short | Meaning |
 |---|---|---|
-| `--dir <path>` | `-d` | Agent directory (default: current folder; global — works before or after subcommands) |
-| `--model provider:model` | `-m` | Override the model, e.g. `anthropic:claude-sonnet-4-6` or `lyzr:<id>@https://agent-prod.studio.lyzr.ai/v4` |
+| `--dir <path>` | `-d` | Agent directory (default: cwd; global — before or after subcommands) |
+| `--model <spec>` | `-m` | Model override (see table above) |
 | `--prompt "..."` | `-p` | One-shot mode (ask once, exit — no REPL) |
 | `--env <name>` | `-e` | Reserved for `config/<name>.yaml` environments |
 | `--repo <url>` + `--pat <token>` | `-r` | Clone a repo, work on `gitagent/session-<id>`, push on exit (token also via `GITHUB_TOKEN`/`GIT_TOKEN`) |
@@ -79,64 +103,13 @@ gitagent integrations export --format opencode --out ./interop --dir ./my-agent
 
 | `--format` | Writes |
 |---|---|
-| `opencode` | `opencode.json` (model + instructions + tools + mcp) |
+| `opencode` | `opencode.json` (`model` + `agent.<name>.prompt` + `mcp`) |
 | `nanobot` | `nanobot.yaml` + `SYSTEM.md` |
-| `openclaw` | `openclaw.json` (agents + model + skills) |
+| `openclaw` | `openclaw.json` (agents + tools) |
 | `claude-code` | `CLAUDE.md` + `.claude/settings.json` |
 | `lyzr` | `.env.lyzr` (`LYZR_API_KEY` + `lyzr:<id>@<base>` model string) |
 
-## Models
-
-`--model provider:model[@base-url]`; OpenCode style `provider/model` also
-works (`opencode/kimi-k2.6`). `@base-url` (or `GITAGENT_MODEL_BASE_URL`)
-targets any OpenAI-compatible endpoint (Ollama, Lyzr, gateways). Startup key
-check: `anthropic`→`ANTHROPIC_API_KEY`, `openai`→`OPENAI_API_KEY`,
-`google`→`GEMINI_API_KEY`, `xai`→`XAI_API_KEY`, `groq`→`GROQ_API_KEY`,
-`mistral`→`MISTRAL_API_KEY`, `lyzr`→`LYZR_API_KEY`,
-`opencode`→`OPENCODE_API_KEY`; `ollama` needs no key.
-
-### OpenCode Zen (hosted gateway)
-
-Zen exposes an OpenAI-compatible `chat/completions` family at
-`https://opencode.ai/zen/v1` — get a key at opencode.ai/auth, then:
-
-```bash
-export OPENCODE_API_KEY="..."
-gitagent --dir ./my-agent --model "opencode/kimi-k2.6" "Explain this project"
-```
-
-Compatible Zen models are the chat-completions ones (DeepSeek V4,
-Kimi K2/K3, GLM, MiniMax, …). Zen GPT/Claude/Gemini models live on
-`/responses`, `/messages`, `/models/…` endpoints with different protocols
-and are NOT callable through gitagent — use those providers' native keys
-instead (e.g. `--model anthropic:claude-sonnet-4-6`).
-
-### OpenCode Go ($10/mo subscription — different endpoint!)
-
-Go keys are scoped to `https://opencode.ai/zen/go/v1` (note `/go/`) and
-use the model format `opencode-go/<id>` — a Zen-style `opencode/<id>`
-will be rejected. Same `OPENCODE_API_KEY` env var:
-
-```bash
-export OPENCODE_API_KEY="<Go key from opencode.ai/auth>"
-gitagent --dir ./my-agent --model "opencode-go/kimi-k2.6" "Explain this project"
-```
-
-Go chat-completions models include Kimi K2.6/K2.7-Code/K3, DeepSeek V4
-Pro/Flash, GLM-5.x, MiMo-V2.5, Hy3/Hy4, Omen Alpha, LongCat-2.0.
-(Go's MiniMax/Qwen/Muse/GPT models use other protocols — unsupported,
-same rule as Zen.) Verify a key any time with zero cost:
-
-```bash
-curl -s https://opencode.ai/zen/go/v1/models \
-  -H "Authorization: Bearer $OPENCODE_API_KEY" | head -c 300
-# → {"object":"list","data":[…]} means the key works
-```
-
-The client identifies as `gitagent/<version>` and sends
-`x-opencode-session` on opencode endpoints (their docs ask third-party
-clients to send it, so Go accounts aren't flagged for unidentified
-traffic).
+Then run it under OpenCode from the export dir (`opencode` / `opencode run "…"`).
 
 ## Exit codes
 
