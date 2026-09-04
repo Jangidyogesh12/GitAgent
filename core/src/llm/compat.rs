@@ -164,9 +164,9 @@ pub fn to_wire_messages(messages: &[AgentMessage]) -> Vec<serde_json::Value> {
 /// # Description
 /// Small local models (Gemma/Muse via Ollama templates) print
 /// `{"name": "<tool>", "arguments": {...}}` as TEXT instead of using native
-/// tool calls. When the reply holds exactly one such object (optionally in a
-/// ```json fence), promote it to a real ToolCall block. Returns None when
-/// the text is a normal answer — never steal user-visible text.
+/// tool calls. When the reply holds exactly one such object (optionally in
+/// a json-fenced block), promote it to a real ToolCall block. Returns None
+/// when the text is a normal answer — never steal user-visible text.
 ///
 /// # Example
 /// ```rust
