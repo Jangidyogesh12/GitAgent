@@ -1,0 +1,61 @@
+# CI — build, lint, and test every push/PR.
+#
+# WHAT THIS DOES (read top to bottom to learn GitHub Actions):
+#   1. `on:` — WHEN to run: pushes to master/main + every pull request.
+#   2. `jobs:` — WHAT to run, as parallel jobs on fresh VMs:
+#        - `rust`: fmt gate → clippy gate (-D warnings = warnings fail)
+#          → full test suite (unit + doctests + mock-SSE integration tests).
+#        - `python-lint`: ruff lint + format check for examples/mock-llm.py.
+#   3. Each `run:` is just a shell command — same ones from Study.md §9.
+#
+# LEARN BY TWEAKING: break a doctest, push to a branch, open a PR, and watch
+# the `rust` job go red on the Actions tab with the exact failing assertion.
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  rust:
+    name: rust (fmt + clippy + test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain with clippy + rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Format gate (no unformatted code merges)
+        run: cargo fmt --all -- --check
+
+      - name: Lint gate (warnings become errors)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test (unit + doc + mock-SSE integration tests, offline)
+        run: cargo test --workspace
+
+  python-lint:
+    name: python lint (mock-llm.py)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Ruff lint (broad ruleset, same as local)
+        run: ruff check --select E,F,I,W,UP,B,C4,ISC,D,ARG,N,PLC,RET,SIM examples/mock-llm.py
+
+      - name: Ruff format check
+        run: ruff format --check examples/mock-llm.py

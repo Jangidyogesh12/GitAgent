@@ -1,0 +1,118 @@
+# Release — build multi-OS binaries and publish installable artifacts.
+#
+# WHAT THIS DOES:
+#   1. Trigger: you push a tag like `v0.2.0` (see "Cutting a release" below).
+#   2. `build` job runs once PER MATRIX LEG (linux-x64, mac-arm64, windows-x64),
+#      each on its native runner — no cross-compilation toolchains needed:
+#        - check the tag matches `cli/Cargo.toml` version (fail fast on skew)
+#        - `cargo build --release --locked -p cli`
+#        - pack `gitagent[.exe]` into gitagent-<ver>-<target>.tar.gz (.zip)
+#        - append its sha256 to SHA256SUMS.txt, upload all as artifacts.
+#   3. `publish` job (runs after ALL legs pass): downloads artifacts,
+#      creates the GitHub Release with generated notes, uploads everything.
+#      Result: `installer/install-remote.sh` can curl these URLs.
+#
+# CUTTING A RELEASE (run locally):
+#   cargo test --workspace          # green first
+#   # bump version in cli/Cargo.toml (and core/sdk if you want them in sync)
+#   git add -A && git commit -m "release v0.2.0" && git tag v0.2.0 && git push origin master v0.2.0
+#
+# LEARN BY READING: compare with ci.yml — same steps vocabulary
+# (checkout → toolchain → run), plus `strategy.matrix` (fan-out),
+# `needs:` (ordering), `permissions:` (what the GITHUB_TOKEN may do),
+# and `gh release` (GitHub CLI is preinstalled on all runners).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # needed for `gh release create` + asset upload
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # one OS failing must not cancel the others
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-latest # Apple Silicon runner
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain + target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Tag must match cli/Cargo.toml version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VER="${TAG#v}"
+          grep -q "^version = \"$VER\"$" cli/Cargo.toml \
+            || { echo "tag $TAG != cli version"; exit 1; }
+          echo "VERSION=$VER" >> "$GITHUB_ENV"
+
+      - name: Build release binary
+        run: cargo build --release --locked -p cli --target ${{ matrix.target }}
+
+      - name: Package (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          STAGE="gitagent-${{ env.VERSION }}-${{ matrix.target }}"
+          mkdir -p "$STAGE"
+          cp "target/${{ matrix.target }}/release/gitagent" "$STAGE/"
+          tar czf "$STAGE.tar.gz" "$STAGE"
+          sha256sum "$STAGE.tar.gz" >> SHA256SUMS.txt
+
+      - name: Package (zip, Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $stage = "gitagent-$env:VERSION-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/gitagent.exe" $stage/
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+          (Get-FileHash "$stage.zip" -Algorithm SHA256).Hash.ToLower() `
+            + "  $stage.zip" | Out-File -Append SHA256SUMS.txt
+
+      - name: Upload artifacts for publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.target }}
+          path: |
+            gitagent-*.tar.gz
+            gitagent-*.zip
+            SHA256SUMS.txt
+
+  publish:
+    name: publish GitHub Release
+    needs: build # wait for every OS leg
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          merge-multiple: true
+
+      - name: Create release + upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release create "$TAG" --title "$TAG" --generate-notes \
+            gitagent-*.tar.gz gitagent-*.zip SHA256SUMS.txt

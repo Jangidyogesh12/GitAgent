@@ -51,10 +51,19 @@ Fork an agent. Branch a personality. `git log` your agent's memory. Diff its rul
 ## Install
 
 ```bash
+# Prebuilt binary, no Rust toolchain needed (linux-x64, mac-arm64):
+curl -fsSL https://raw.githubusercontent.com/Jangidyogesh12/GitAgent/master/installer/install-remote.sh | bash
+
+# Or the full local setup (build + backend wizard):
 ./installer/install.sh
-# binary only, skip the setup wizard:
-GITAGENT_NO_SETUP=1 ./installer/install.sh
+# binary only: GITAGENT_NO_SETUP=1 ./installer/install.sh
+# or: cargo install --path cli
 ```
+
+Releases are cut by pushing a version tag (`git tag v0.2.0 && git push
+origin master v0.2.0`) — the release workflow builds per-OS binaries,
+publishes them with checksums, and the remote installer picks the right
+one. See `.github/workflows/` (commented for learning).
 
 The installer checks prerequisites, builds the release binary, installs it
 to `$HOME/.cargo/bin` (override with `GITAGENT_PREFIX=...`), then walks you
