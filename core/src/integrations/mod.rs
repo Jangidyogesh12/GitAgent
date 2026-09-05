@@ -1,7 +1,7 @@
 //! ============================================================================
-//! Crate: integrations
+//! Module: engine::integrations
 //! ----------------------------------------------------------------------------
-//! WHAT THIS FILE IS FOR:
+//! WHAT THIS MODULE IS FOR:
 //!   Harness interop adapters — first-class support for OpenCode alongside
 //!   the NanoBot / OpenClaw / Claude Code / Lyzr adapters, in both
 //!   directions:
@@ -30,7 +30,7 @@
 //!   * Facade — `export_for()` / `detect_available()` hide the five adapters.
 //!   * Factory — `adapter_for()` builds the right adapter from a `Harness`.
 //!
-//! MODULES PRESENT IN THIS CRATE:
+//! MODULES PRESENT IN THIS MODULE:
 //!   * `harness` — Harness enum + metadata + detect_available().
 //!   * `adapters`— the five Adapter impls (opencode/nanobot/openclaw/...).
 //!   * `export`  — export_for() Facade + model-string helpers.

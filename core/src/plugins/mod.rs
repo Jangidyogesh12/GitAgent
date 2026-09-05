@@ -1,7 +1,7 @@
 //! ============================================================================
-//! Crate: plugins
+//! Module: engine::plugins
 //! ----------------------------------------------------------------------------
-//! WHAT THIS CRATE IS FOR:
+//! WHAT THIS MODULE IS FOR:
 //!   The plugin system. Handles `plugin.yaml` manifests (id kebab-case,
 //!   provides {tools, hooks, skills, prompt}, config schema with
 //!   user > env > default resolution), 3-scope discovery (local `plugins/`
@@ -16,7 +16,7 @@
 //!   * Adapter — `plugin_prompt_additions()` / `plugin_hook_configs()`
 //!     adapt plugin dirs to loader/hook inputs.
 //!
-//! MODULES PRESENT IN THIS CRATE:
+//! MODULES PRESENT IN THIS MODULE:
 //!   * `types`    — PluginManifest, PluginConfigValue, LoadedPlugin.
 //!   * `discover` — discover/install/load + contributions.
 //!

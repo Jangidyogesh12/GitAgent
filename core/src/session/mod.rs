@@ -1,7 +1,7 @@
 //! ============================================================================
-//! Crate: session
+//! Module: engine::session
 //! ----------------------------------------------------------------------------
-//! WHAT THIS CRATE IS FOR:
+//! WHAT THIS MODULE IS FOR:
 //!   "Local repo mode" — clone a GitHub repo, work on a session branch, push
 //!   when done. Inputs: `SessionOptions` (repo URL, optional token, work
 //!   dir, optional session id). Steps: `init_local_session()` builds an
@@ -21,7 +21,7 @@
 //!     error paths (the SDK/CLI call it in `finally`-equivalent code so
 //!     sandbox resources and tokens are never leaked on blocked paths).
 //!
-//! MODULES PRESENT IN THIS CRATE:
+//! MODULES PRESENT IN THIS MODULE:
 //!   * `local` — LocalSession + init/commit/push/finalize + url helpers.
 //!
 //! HOW TO USE (example):

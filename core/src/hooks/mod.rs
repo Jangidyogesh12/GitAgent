@@ -1,7 +1,7 @@
 //! ============================================================================
-//! Crate: hooks
+//! Module: engine::hooks
 //! ----------------------------------------------------------------------------
-//! WHAT THIS CRATE IS FOR:
+//! WHAT THIS MODULE IS FOR:
 //!   Lifecycle script hooks. Loads `hooks/hooks.yaml`, spawns
 //!   `sh <script>` with JSON on stdin plus a 10s timeout, parses stdout as
 //!   `{action: allow|block|modify, reason?, args?}` (unparseable → allow),
@@ -15,7 +15,7 @@
 //!   * Adapter — `HookGate` adapts script hooks to the engine's gate trait.
 //!   * Decorator — `wrap_tool_with_hooks()` decorates any tool's execution.
 //!
-//! MODULES PRESENT IN THIS CRATE:
+//! MODULES PRESENT IN THIS MODULE:
 //!   * `config` — HooksConfig/HookDefinition loading + merge.
 //!   * `exec`   — execute_hook() + run_hooks().
 //!   * `gate`   — HookGate (pre_tool_use → ToolGate).

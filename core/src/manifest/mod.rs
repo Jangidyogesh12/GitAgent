@@ -1,7 +1,7 @@
 //! ============================================================================
-//! Crate: manifest
+//! Module: engine::manifest
 //! ----------------------------------------------------------------------------
-//! WHAT THIS CRATE IS FOR:
+//! WHAT THIS MODULE IS FOR:
 //!   The `agent.yaml` schema — pure data types with NO I/O except one
 //!   loader. Inputs: `agent.yaml` text. Steps: serde-parse into
 //!   `AgentManifest` (spec_version, name/version/description, model with
@@ -17,7 +17,7 @@
 //!     first-run manifest for empty-dir scaffolding.
 //!   * Data Transfer Object — structs cross every crate boundary unchanged.
 //!
-//! MODULES PRESENT IN THIS CRATE:
+//! MODULES PRESENT IN THIS MODULE:
 //!   * `model`    — ModelConfig + ModelConstraints + provider_key().
 //!   * `types` — AgentManifest + Dependency + load_manifest() + scaffold.
 //!

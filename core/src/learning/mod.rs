@@ -1,7 +1,7 @@
 //! ============================================================================
-//! Crate: learning
+//! Module: engine::learning
 //! ----------------------------------------------------------------------------
-//! WHAT THIS CRATE IS FOR:
+//! WHAT THIS MODULE IS FOR:
 //!   The "always learning" half of GitAgent. Covers skill confidence math
 //!   (`reinforcement`), the multi-step task lifecycle plus skill matching
 //!   (`tasks`: begin/update/end/list), and turning finished tasks into
@@ -15,7 +15,7 @@
 //!   * Observer — `end` with `skill_used` notifies reinforcement, which
 //!     updates the skill's confidence via `adjust_confidence`.
 //!
-//! MODULES PRESENT IN THIS CRATE:
+//! MODULES PRESENT IN THIS MODULE:
 //!   * `reinforcement` — confidence math + SKILL.md frontmatter updates.
 //!   * `tasks`         — TaskTracker tool + JSON store + keyword matching.
 //!   * `skills_learn`  — SkillLearner tool + worthiness heuristic.

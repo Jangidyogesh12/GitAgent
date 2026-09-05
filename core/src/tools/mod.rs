@@ -1,7 +1,7 @@
 //! ============================================================================
-//! Crate: tools
+//! Module: engine::tools
 //! ----------------------------------------------------------------------------
-//! WHAT THIS CRATE IS FOR:
+//! WHAT THIS MODULE IS FOR:
 //!   The agent's callable tools: `cli` (shell exec with process-group kill
 //!   and tail truncation), `read` (binary sniff plus pagination), `write`
 //!   (parent-creating write), `edit` (literal / replace-all / regex
@@ -17,7 +17,7 @@
 //!   * Command — each tool encapsulates a request (name plus args JSON) as
 //!     an object the loop can invoke, log, and gate uniformly.
 //!
-//! MODULES PRESENT IN THIS CRATE:
+//! MODULES PRESENT IN THIS MODULE:
 //!   * `cli`         — CliTool (shell, timeout, rolling-tail cap).
 //!   * `read`        — ReadTool (binary detect, paginate).
 //!   * `write`       — WriteTool (create-dirs write).

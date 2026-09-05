@@ -1,7 +1,7 @@
 //! ============================================================================
-//! Crate: mcp
+//! Module: engine::mcp
 //! ----------------------------------------------------------------------------
-//! WHAT THIS CRATE IS FOR:
+//! WHAT THIS MODULE IS FOR:
 //!   Model Context Protocol client. Handles stdio / http / sse server
 //!   configs with `${VAR}` interpolation, parallel fail-soft connect,
 //!   paginated `tools/list` (follows `nextCursor`), `<server>__<tool>`
@@ -21,7 +21,7 @@
 //!   * Facade — `McpManager::setup()` hides connect + list + register.
 //!   * RAII — `cleanup()` is idempotent; children die with the manager.
 //!
-//! MODULES PRESENT IN THIS CRATE:
+//! MODULES PRESENT IN THIS MODULE:
 //!   * `types`   — McpServerConfig (+ sanitise/truncate helpers).
 //!   * `manager` — McpManager setup/call/cleanup + flatten_result().
 //!

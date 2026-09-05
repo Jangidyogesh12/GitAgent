@@ -1,7 +1,7 @@
 //! ============================================================================
-//! Crate: llm
+//! Module: engine::llm
 //! ----------------------------------------------------------------------------
-//! WHAT THIS CRATE IS FOR:
+//! WHAT THIS MODULE IS FOR:
 //!   The LLM provider layer — ONE OpenAI-compatible
 //!   streaming client covers OpenAI, Anthropic-via-gateway, Ollama, Lyzr and
 //!   any `--base-url` endpoint, because they all speak the same wire format.
@@ -15,7 +15,7 @@
 //!     then fallbacks in order, with bounded retries on transient errors.
 //!   * Decorator — retry/backoff wraps the raw SSE call without changing it.
 //!
-//! MODULES PRESENT IN THIS CRATE:
+//! MODULES PRESENT IN THIS MODULE:
 //!   * `spec`     — ModelSpec + resolve_model() + context/cost tables.
 //!   * `compat`   — OpenAiCompat Strategy implementation (SSE streaming).
 //!   * `fallback` — resilient multi-spec driver (retries + failover).

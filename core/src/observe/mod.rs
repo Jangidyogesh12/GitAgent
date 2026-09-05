@@ -1,7 +1,7 @@
 //! ============================================================================
-//! Crate: observe
+//! Module: engine::observe
 //! ----------------------------------------------------------------------------
-//! WHAT THIS CRATE IS FOR:
+//! WHAT THIS MODULE IS FOR:
 //!   Observability: cost tracking, audit logging, chat history, telemetry.
 //!   `cost` accumulates per-model token/USD totals; `audit` writes
 //!   `.gitagent/audit.jsonl` with 1000-char result slices; `history` keeps
@@ -14,7 +14,7 @@
 //!     having small `record_*` methods called from the SDK/CLI (no callbacks
 //!     needed at this scale; the call sites are the subjects).
 //!
-//! MODULES PRESENT IN THIS CRATE:
+//! MODULES PRESENT IN THIS MODULE:
 //!   * `cost`     — CostTracker (per-model accumulation).
 //!   * `audit`    — AuditLogger (JSONL session/tool/error records).
 //!   * `history`  — ChatHistory (per-branch JSONL store).

@@ -1,7 +1,7 @@
 //! ============================================================================
-//! Crate: loader
+//! Module: engine::loader
 //! ----------------------------------------------------------------------------
-//! WHAT THIS CRATE IS FOR:
+//! WHAT THIS MODULE IS FOR:
 //!   The assembly line — turns an agent DIRECTORY into a `LoadedAgent`
 //!   (manifest + one big system prompt + session id). Inputs: agent dir,
 //!   optional model flag, optional session id. Steps: read `agent.yaml`,
@@ -16,7 +16,7 @@
 //!     `build()` joins them (skipping empties).
 //!   * Facade — `load_agent()` is the single front door hiding discovery.
 //!
-//! MODULES PRESENT IN THIS CRATE:
+//! MODULES PRESENT IN THIS MODULE:
 //!   * `discover` — skills/knowledge/workflows/agents/examples readers.
 //!   * `prompt`   — PromptBuilder (ordered section assembly).
 //!   * `load`     — load_agent() + git helpers + session state.

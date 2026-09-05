@@ -1,7 +1,7 @@
 //! ============================================================================
-//! Crate: helpers
+//! Module: engine::helpers
 //! ----------------------------------------------------------------------------
-//! WHAT THIS FILE IS FOR:
+//! WHAT THIS MODULE IS FOR:
 //!   This is the helpers facade (`helpers/mod.rs`). It declares and re-exports every
 //!   shared utility module used by ALL other gitagent crates, so the rest of
 //!   the workspace never duplicates helpers.
@@ -12,7 +12,7 @@
 //!   * Utility Module (refactoring.guru "no pattern", organised as pure
 //!     functions) — every helper is stateless and independently testable.
 //!
-//! FUNCTIONS / MODULES PRESENT IN THIS FILE:
+//! FUNCTIONS / MODULES PRESENT IN THIS MODULE:
 //!   * `pub mod env`         — re-exported; `.env` loading + `${VAR}` expansion
 //!   * `pub mod fsx`         — re-exported; file helpers (read/write/paginate)
 //!   * `pub mod text`        — re-exported; truncation + token estimation
