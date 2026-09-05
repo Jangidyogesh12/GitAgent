@@ -1,0 +1,1 @@
+User prefers markdown format for answers.
