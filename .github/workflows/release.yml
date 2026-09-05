@@ -27,7 +27,7 @@ name: Release
 
 on:
   push:
-    branches: [master, main] # mainline only — feature branches never release
+    branches: [main] # mainline only — feature branches never release
 
 concurrency:
   group: auto-release
