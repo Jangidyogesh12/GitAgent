@@ -1,7 +1,7 @@
 # Release — automatic release on every merge/push to the mainline branch.
 #
 # WHAT THIS DOES (read top to bottom to learn GitHub Actions):
-#   1. Trigger: ANY push to `master` or `main` (i.e. every merged PR).
+#   1. Trigger: ANY push to `main` (i.e. every merged PR).
 #      No manual tagging — the workflow versions itself.
 #   2. `concurrency:` — merges landing back-to-back QUEUE instead of
 #      racing (two releases must never interleave).

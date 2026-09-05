@@ -1,7 +1,7 @@
 # CI — build, lint, and test every push/PR.
 #
 # WHAT THIS DOES (read top to bottom to learn GitHub Actions):
-#   1. `on:` — WHEN to run: pushes to master/main + every pull request.
+#   1. `on:` — WHEN to run: pushes to main + every pull request.
 #   2. `jobs:` — WHAT to run, as parallel jobs on fresh VMs:
 #        - `rust`: fmt gate → clippy gate (-D warnings = warnings fail)
 #          → full test suite (unit + doctests + mock-SSE integration tests).
@@ -14,7 +14,7 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [main]
   pull_request:
 
 jobs:

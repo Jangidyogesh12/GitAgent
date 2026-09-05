@@ -3,7 +3,7 @@
 # gitagent remote installer — install a prebuilt binary with curl.
 # ----------------------------------------------------------------------------
 # USAGE (no git clone, no Rust toolchain needed):
-#   curl -fsSL https://raw.githubusercontent.com/Jangidyogesh12/GitAgent/master/installer/install-remote.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Jangidyogesh12/GitAgent/main/installer/install-remote.sh | bash
 #
 # Knobs (all optional env vars / flags):
 #   GITAGENT_REPO=owner/name   which fork's releases to use (default below)
@@ -30,7 +30,7 @@ fatal() { printf '\033[1;31m[gitagent]\033[0m %s\n' "$*"; exit 1; }
 # --- 0. source-build escape hatch -------------------------------------------
 if [ "${1:-}" = "--from-source" ]; then
   command -v cargo >/dev/null 2>&1 || fatal "cargo not found — install Rust from https://rustup.rs first"
-  REF="$VERSION"; [ "$REF" = "latest" ] && REF="master"
+  REF="$VERSION"; [ "$REF" = "latest" ] && REF="main"
   info "installing from source ($REPO @ $REF)…"
   cargo install --locked --git "https://github.com/$REPO.git" --rev "$REF" --root "${PREFIX:-$HOME/.cargo}" --bin gitagent
   info "done. Run: gitagent --help"
