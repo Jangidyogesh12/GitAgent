@@ -16,9 +16,9 @@
 //!   * `Session::open(opts)` performs the same load + registry + gates +
 //!     client build once, then each `send(prompt)` runs one turn through
 //!     the shared `Agent` (transcript accumulates across turns).
-//!   * Tools: builtin + learning + declarative + plugin (collision-skipped)
-//!     + MCP + `extra_tools`, narrowed by the allowlist-then-denylist
-//!     filter in `build_registry()`.
+//!   * Tools: builtin plus learning plus declarative plus plugin
+//!     (collision-skipped) plus MCP plus `extra_tools`, narrowed by the
+//!     allowlist-then-denylist filter in `build_registry()`.
 //!   * Gates run in order: `PermissionGate` (mode + ordered allow/deny
 //!     rules) first, then the script `HookGate` when hooks are configured.
 //!

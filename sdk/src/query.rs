@@ -14,8 +14,8 @@
 //!     and returns the receiver (Observer: deltas / assistant turns / tool
 //!     events / system notes flow out; dropping the receiver stops the
 //!     drain and ends the loop with the channel).
-//!   * `run_query()` pipeline: (1) `load_agent()` manifest + system prompt
-//!     + model specs, append `system_prompt_suffix`, emit
+//!   * `run_query()` pipeline: (1) `load_agent()` manifest plus system prompt
+//!     plus model specs, append `system_prompt_suffix`, emit
 //!     `System("session_start …")`; (2) registry: builtin tools → learning
 //!     tools (`TaskTracker` + `SkillLearner`) → declarative YAML tools →
 //!     enabled-plugin tools (name collisions skipped with a warning) → MCP
