@@ -1,22 +1,27 @@
-# Release — automatic release on every merge/push to the mainline branch.
+# Release — cut a release by pushing a version tag, never on plain pushes.
 #
 # WHAT THIS DOES (read top to bottom to learn GitHub Actions):
-#   1. Trigger: ANY push to `main` (i.e. every merged PR).
-#      No manual tagging — the workflow versions itself.
-#   2. `concurrency:` — merges landing back-to-back QUEUE instead of
-#      racing (two releases must never interleave).
-#   3. `version` job: read cli/Cargo.toml version → bump PATCH
-#      (0.1.0 → 0.1.1) → refresh Cargo.lock → commit BOTH with `[skip ci]`
-#      (that tag tells GitHub to NOT re-run any workflow for the bump
-#      commit — otherwise we'd loop forever) → tag `v<new>` → push
-#      commit + tag. Outputs `version`/`tag` for later jobs.
+#   1. Trigger: a pushed tag matching `v*` (e.g. `v0.2.0`), or a manual
+#      `workflow_dispatch` run from the Actions tab. Plain pushes to `main`
+#      NEVER release — they only run CI. This keeps `main` bot-commit-free,
+#      so `git push` is never rejected by our own automation.
+#   2. `concurrency:` — two releases must never interleave; queue instead.
+#   3. `resolve` job: derive `version`/`tag` from the tag name and VERIFY it
+#      matches `cli/Cargo.toml` (fail fast on a typo'd tag). Manual runs
+#      create + push the tag first, then follow the same path.
 #   4. `build` job: runs once PER MATRIX LEG on its native OS (no
 #      cross-compilation toolchains needed), packs
 #      gitagent-<ver>-<target>.tar.gz (.zip on Windows) + SHA256SUMS.txt,
 #      uploads them as artifacts.
-#   5. `publish` job (`needs:` = wait for version+build): downloads
+#   5. `publish` job (`needs:` = wait for resolve+build): downloads
 #      artifacts, creates the GitHub Release, uploads assets.
 #      `installer/install-remote.sh` then installs that release via curl.
+#
+# DEVELOPER FLOW:
+#   Push freely to `main` all day — nothing releases. When ready to ship:
+#     # 1. bump the version in cli/Cargo.toml (e.g. 0.1.5 -> 0.2.0), commit, push
+#     # 2. tag + push the tag — THIS is what releases:
+#     git tag v0.2.0 && git push origin main v0.2.0
 #
 # LEARN BY READING: compare with ci.yml — same steps vocabulary, plus
 # `strategy.matrix` (fan-out), `needs:` (ordering), `outputs:` (passing
@@ -27,50 +32,64 @@ name: Release
 
 on:
   push:
-    branches: [main] # mainline only — feature branches never release
+    tags: ['v*'] # version tags only — plain pushes to main never release
+  workflow_dispatch: # manual "Run workflow" button in the Actions tab
+    inputs:
+      version:
+        description: 'Version to release (e.g. 0.2.0 — must match cli/Cargo.toml)'
+        required: true
 
 concurrency:
-  group: auto-release
-  cancel-in-progress: false # queue merges, never overlap two releases
+  group: release
+  cancel-in-progress: false # queue releases, never overlap two of them
 
 permissions:
-  contents: write # commit bump + push tag + create release + upload assets
+  contents: write # create tags (manual runs) + create release + upload assets
 
 jobs:
-  version:
-    name: bump version + tag
+  resolve:
+    name: resolve + verify version
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.bump.outputs.version }}
-      tag: ${{ steps.bump.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Install stable toolchain (for Cargo.lock refresh)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Bump patch version, commit [skip ci], tag, push
-        id: bump
+      - name: Resolve version from tag (or manual input)
+        id: v
         run: |
-          VER="$(grep '^version' cli/Cargo.toml | head -n 1 | sed 's/.*"\(.*\)"/\1/')"
-          NEW="$(echo "$VER" | awk -F. '{print $1"."$2"."$3+1}')"
-          echo "bumping $VER -> $NEW"
-          sed -i "s/^version = \"$VER\"$/version = \"$NEW\"/" cli/Cargo.toml
-          cargo check -p cli >/dev/null # refresh Cargo.lock for the new version
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add cli/Cargo.toml Cargo.lock
-          git commit -m "release: bump to v$NEW [skip ci]"
-          git tag "v$NEW"
-          BRANCH="${GITHUB_REF#refs/heads/}"
-          git push origin "HEAD:$BRANCH" "v$NEW"
-          echo "version=$NEW" >> "$GITHUB_OUTPUT"
-          echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VER="${{ inputs.version }}"
+            VER="${VER#v}" # accept "0.2.0" or "v0.2.0"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "v$VER"
+            git push origin "v$VER"
+            echo "version=$VER" >> "$GITHUB_OUTPUT"
+            echo "tag=v$VER" >> "$GITHUB_OUTPUT"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tag must match cli/Cargo.toml
+        run: |
+          TAG="${{ steps.v.outputs.tag }}"
+          VER="${{ steps.v.outputs.version }}"
+          FILE_VER="$(grep '^version' cli/Cargo.toml | head -n 1 | sed 's/.*"\(.*\)"/\1/')"
+          [ "$VER" = "$FILE_VER" ] || {
+            echo "tag $TAG does not match cli/Cargo.toml version $FILE_VER"
+            echo "fix: bump cli/Cargo.toml to $VER, commit, retag"
+            exit 1
+          }
+          echo "releasing $TAG (matches cli/Cargo.toml)"
 
   build:
     name: build (${{ matrix.target }})
-    needs: version # wait for the tag before building it
+    needs: resolve # wait for the version before building it
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false # one OS failing must not cancel the others
@@ -88,6 +107,8 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
 
       - name: Install stable toolchain + target
         uses: dtolnay/rust-toolchain@stable
@@ -101,7 +122,7 @@ jobs:
         if: matrix.archive == 'tar.gz'
         shell: bash
         run: |
-          STAGE="gitagent-${{ needs.version.outputs.version }}-${{ matrix.target }}"
+          STAGE="gitagent-${{ needs.resolve.outputs.version }}-${{ matrix.target }}"
           mkdir -p "$STAGE"
           cp "target/${{ matrix.target }}/release/gitagent" "$STAGE/"
           tar czf "$STAGE.tar.gz" "$STAGE"
@@ -111,7 +132,7 @@ jobs:
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          $stage = "gitagent-${{ needs.version.outputs.version }}-${{ matrix.target }}"
+          $stage = "gitagent-${{ needs.resolve.outputs.version }}-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/gitagent.exe" $stage/
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
@@ -129,7 +150,7 @@ jobs:
 
   publish:
     name: publish GitHub Release
-    needs: [version, build] # wait for the tag AND every OS leg
+    needs: [resolve, build] # wait for the version AND every OS leg
     runs-on: ubuntu-latest
     steps:
       - name: Download all packages
@@ -142,6 +163,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ needs.version.outputs.tag }}" \
-            --title "${{ needs.version.outputs.tag }}" --generate-notes \
+          gh release create "${{ needs.resolve.outputs.tag }}" \
+            --title "${{ needs.resolve.outputs.tag }}" --generate-notes \
             gitagent-*.tar.gz gitagent-*.zip SHA256SUMS.txt

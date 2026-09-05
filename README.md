@@ -60,10 +60,12 @@ curl -fsSL https://raw.githubusercontent.com/Jangidyogesh12/GitAgent/main/instal
 # or: cargo install --path cli
 ```
 
-Releases are automatic: every merge to `main` bumps the patch
-version, tags `vX.Y.Z`, builds per-OS binaries, and publishes them with
-checksums — which is what the remote installer downloads. See
-`.github/workflows/` (commented for learning).
+Releases are tag-triggered: push freely to `main` (only CI runs), and
+when ready bump `cli/Cargo.toml`, commit, then
+`git tag vX.Y.Z && git push origin main vX.Y.Z` — the tag builds
+per-OS binaries and publishes them with checksums, which is what the
+remote installer downloads. See `.github/workflows/` (commented for
+learning).
 
 The installer checks prerequisites, builds the release binary, installs it
 to `$HOME/.cargo/bin` (override with `GITAGENT_PREFIX=...`), then walks you
