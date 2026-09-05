@@ -3,16 +3,23 @@
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
 //!   The tool registry Factory — `builtin_tools()` assembles the local tool
-//!   set and marks stateful tools Sequential. Ports
-//!   `createBuiltinTools()` from `src/tools/index.ts` (local vs sandbox pick
-//!   + sequential marking of cli/write/edit/memory/task_tracker/...).
+//!   set (cli, read, write, edit, memory) and wires each tool to the agent
+//!   directory. When a sandbox backend is supplied, the `cli` tool runs
+//!   through it instead of the local shell; execution modes (Parallel for
+//!   read, Sequential for the rest) are reported by each tool itself.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Factory — one function builds the whole `Vec<Arc<dyn AgentTool>>`
 //!     registry from (agent_dir, cli_timeout, sandbox backend).
 //!
 //! FUNCTIONS PRESENT IN THIS FILE:
-//!   * `builtin_tools()` — build the local (+sandbox-backed cli) registry.
+//!   * `builtin_tools()` — build the local (plus sandbox-backed cli) registry.
+//!
+//! HOW IT WORKS:
+//!   * Each tool is rooted at `agent_dir` so relative paths resolve inside
+//!     the agent workspace; `cli_timeout` becomes the default per-command
+//!     timeout; extra learning tools are appended by an upper layer to keep
+//!     this crate dependency-light.
 //!
 //! HOW TO USE (example):
 //! ```rust,no_run
@@ -36,12 +43,11 @@ use crate::tools::write::WriteTool;
 /// Build the builtin tool registry (Factory pattern).
 ///
 /// # Description
-/// Ports `createBuiltinTools()`: always returns cli/read/write/edit/memory.
-/// `read` stays Parallel; the rest report Sequential themselves. When
-/// `sandbox` is Some, the `cli` tool runs through that backend (the
-/// `sandbox-cli.ts` twin) instead of the local shell. `task_tracker` and
-/// `skill_learner` come from the `learning` crate and are appended
-/// by the SDK layer (kept separate so tools stay dependency-light).
+/// Always returns cli/read/write/edit/memory. `read` stays Parallel; the
+/// rest report Sequential themselves. When `sandbox` is Some, the `cli`
+/// tool runs through that backend instead of the local shell. Task and
+/// learning tools come from an upper crate and are appended by that layer
+/// (kept separate so tools stay dependency-light).
 ///
 /// # Example
 /// ```rust,no_run

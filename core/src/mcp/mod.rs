@@ -2,21 +2,19 @@
 //! Crate: mcp
 //! ----------------------------------------------------------------------------
 //! WHAT THIS CRATE IS FOR:
-//!   Model Context Protocol client. Ports `src/mcp/manager.ts` +
-//!   `src/mcp/types.ts`: stdio / http / sse server configs with `${VAR}`
-//!   interpolation, parallel fail-soft connect, paginated `tools/list`
-//!   (follows `nextCursor`), `<server>__<tool>` names sanitised to
-//!   `[a-zA-Z0-9_-]` + truncated to 64 chars, collision checks, result
-//!   flattening (text joined, image/audio → `[image: ...]`, resource →
-//!   `[resource: ...]`, empty + structuredContent → JSON, isError prefix),
-//!   and idempotent `cleanup()`.
+//!   Model Context Protocol client. Handles stdio / http / sse server
+//!   configs with `${VAR}` interpolation, parallel fail-soft connect,
+//!   paginated `tools/list` (follows `nextCursor`), `<server>__<tool>`
+//!   names sanitised to `[a-zA-Z0-9_-]` + truncated to 64 chars, collision
+//!   checks, result flattening (text joined, image/audio → `[image: ...]`,
+//!   resource → `[resource: ...]`, empty + structuredContent → JSON,
+//!   isError prefix), and idempotent `cleanup()`.
 //!
-//!   Transport note: this port implements the **stdio** transport fully
+//!   Transport note: the **stdio** transport is fully implemented
 //!   (JSON-RPC 2.0 over the child process pipes: initialize →
 //!   notifications/initialized → tools/list → tools/call). HTTP/SSE servers
-//!   are parsed from config and reported as unsupported-until-configured —
-//!   the manager stays fail-soft and the session continues (documented in
-//!   Study.md as a known gap with a clear extension point).
+//!   are parsed from config and reported as unsupported — the manager
+//!   stays fail-soft and the session continues.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Adapter — `McpTool` adapts a remote MCP tool to `AgentTool`.

@@ -2,9 +2,9 @@
 //! Module: engine::mcp::types
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   MCP server config types. Ports `src/mcp/types.ts`: stdio
-//!   (`command/args/env/cwd/timeoutMs`) vs http/sse (`url/headers/timeoutMs`)
-//!   configs, plus the TS naming rules (sanitise + 64-char cap).
+//!   MCP server config types. Defines stdio (`command/args/env/cwd/
+//!   timeoutMs`) vs http/sse (`url/headers/timeoutMs`) configs, plus the
+//!   tool-naming rules (sanitise + 64-char cap).
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
 //!   * `McpServerConfig`     — untagged enum deserialised from agent.yaml.
@@ -19,13 +19,13 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Default per-server connect + listTools timeout (TS: 30_000 ms).
+/// Default per-server connect + listTools timeout (30_000 ms).
 pub const DEFAULT_TIMEOUT_MS: u64 = 30_000;
-/// Provider-imposed tool-name length cap (TS truncates to 64).
+/// Provider-imposed tool-name length cap (names truncate to 64).
 pub const MAX_TOOL_NAME_LEN: usize = 64;
 
 /// One MCP server declaration (untagged: presence of `command` vs `url`
-/// decides the variant — mirrors the TS `McpServerConfig` union).
+/// decides the variant).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum McpServerConfig {
@@ -62,7 +62,7 @@ pub enum McpServerConfig {
     },
 }
 
-/// Build `<server>__<tool>`, sanitised + capped (TS naming rule).
+/// Build `<server>__<tool>`, sanitised + capped.
 ///
 /// # Description
 /// `[^a-zA-Z0-9_-]` → `_`, then truncate to 64 chars. Callers must

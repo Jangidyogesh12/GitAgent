@@ -2,20 +2,40 @@
 //! Module: sdk::query
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The `query()` Facade — the whole pipeline in one call. Ports
-//!   `src/sdk.ts`: load agent → system-prompt suffix → builtin (+learning)
-//!   tools → declarative tools → plugin tools (collision-skipped) → MCP
-//!   tools → SDK extra tools → allowed/disallowed filters → gates
-//!   (permissions first, then script hooks) → model client (preferred +
-//!   fallbacks) → engine loop → `SdkMessage` stream. Setup failures arrive
-//!   as `SdkMessage::Error` (never a panic), mirroring the TS `.catch` that
-//!   emits `system/error` + finish.
+//!   The `query()` Facade — the whole single-shot pipeline in one call:
+//!   load the agent, assemble the tool registry, attach gates, build the
+//!   model client, run the agent loop, and stream normalised `SdkMessage`s.
+//!   Setup failures arrive as `SdkMessage::Error` (never a panic); the
+//!   receiver closes when the run finishes.
+//!
+//! HOW IT WORKS:
+//!   * `query(opts)` creates an unbounded channel, spawns `run_query()` on
+//!     the tokio runtime, maps any `QueryError` into `SdkMessage::Error`,
+//!     and returns the receiver (Observer: deltas / assistant turns / tool
+//!     events / system notes flow out; dropping the receiver stops the
+//!     drain and ends the loop with the channel).
+//!   * `run_query()` pipeline: (1) `load_agent()` manifest + system prompt
+//!     + model specs, append `system_prompt_suffix`, emit
+//!     `System("session_start …")`; (2) registry: builtin tools → learning
+//!     tools (`TaskTracker` + `SkillLearner`) → declarative YAML tools →
+//!     enabled-plugin tools (name collisions skipped with a warning) → MCP
+//!     tools (fail-soft, collision-skipped) → `extra_tools`, then narrowed
+//!     by `build_registry()` allowlist-then-denylist; (3) gates: permission
+//!     gate first, then the merged agent+plugin script hook gate when hooks
+//!     exist; (4) model client from preferred + fallback specs plus
+//!     `GenParams`/max-turns `Agent` builder; (5) `agent.prompt()` event
+//!     stream mapped to messages (`MessageDelta`→`Delta`, error
+//!     `MessageEnd`→`Error`, normal `MessageEnd`→`Assistant`,
+//!     `ToolExecutionStart/End`→`ToolUse`/`ToolResult`, `AgentEnd`→
+//!     `System("session_end")`), ending with MCP cleanup.
+//!   * `build_registry()` is the pure filter step: keep tools passing the
+//!     optional allowlist, then drop any matching the denylist.
 //!
 //! FUNCTIONS / TYPES PRESENT IN THIS FILE:
 //!   * `QueryError`      — setup-failure type (also sent as SdkMessage).
 //!   * `query()`         — run one prompt → message receiver (Observer).
-//!   * `build_registry()`— assemble the tool registry (filter order:
-//!     allowlist THEN denylist, like TS).
+//!   * `build_registry()`— assemble the tool registry (allowlist then
+//!     denylist).
 //!
 //! HOW TO USE (example):
 //! ```rust,no_run
@@ -197,7 +217,7 @@ async fn run_query(
         .with_params(params)
         .with_gates(gates);
 
-    // 5. Prompt → map engine events → SdkMessages (the TS event-mapping table).
+    // 5. Prompt → map engine events → SdkMessages.
     let mut ev_rx = agent.prompt(opts.prompt.clone(), client).await;
     while let Some(ev) = ev_rx.recv().await {
         let msg = match ev {
@@ -237,8 +257,8 @@ async fn run_query(
 /// Apply allowlist THEN denylist to a registry (pure, testable).
 ///
 /// # Description
-/// Ports the TS filter order: `allowedTools` allowlist first, then
-/// `disallowedTools` denylist. `None` allowlist = keep all.
+/// Filter order: `allowedTools` allowlist first, then `disallowedTools`
+/// denylist. `None` allowlist = keep all.
 ///
 /// # Example
 /// ```rust

@@ -3,9 +3,9 @@
 //! ----------------------------------------------------------------------------
 //! WHAT THIS CRATE IS FOR:
 //!   The backbone of the workspace: all agent logic lives here as modules,
-//!   and both `sdk` and `cli` build on top of it. A faithful Rust port of the
-//!   TypeScript GitAgent (`src/`) plus its two npm engine dependencies
-//!   (pi-agent-core → `agent`, pi-ai → `llm`).
+//!   and both `sdk` and `cli` build on top of it — manifest schema,
+//!   agent loading, the agent loop, tools, hooks, plugins, MCP, sessions,
+//!   learning, observability, and harness adapters.
 //!
 //! WHY "engine" AND NOT "core": the folder is `core/`, but a library package
 //! named `core` breaks every proc macro that emits `core::…` paths

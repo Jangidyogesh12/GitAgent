@@ -2,22 +2,29 @@
 //! Module: engine::helpers::env
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Ports `src/env-utils.ts` + the `.env` loading in `src/index.ts` from the
-//!   TypeScript original. Two jobs:
-//!     1. Load `KEY=VALUE` files (global `~/.gitagent/.env`, then agent `.env`)
-//!        into the process environment (later source wins).
-//!     2. Expand `${VAR_NAME}` placeholders inside arbitrary strings and
-//!        inside `serde_json::Value` trees (used for MCP + plugin configs).
+//!   Environment handling with two jobs:
+//!     1. Load `KEY=VALUE` files (global `~/.gitagent/.env`, then the agent
+//!        local `.env`) into the process environment (later source wins).
+//!     2. Expand `${VAR_NAME}` placeholders inside strings and inside
+//!        `serde_json::Value` trees (used for server plus plugin configs).
 //!
 //! DESIGN PATTERNS USED:
-//!   * Strategy — the caller injects a *lookup strategy* (`&dyn Fn(&str)`)
-//!     so tests can pass a fake map while production passes `std::env::var`.
+//!   * Strategy — the caller injects a lookup strategy (`&dyn Fn(&str)`)
+//!     so tests pass a fake map while production passes the process env.
 //!
 //! FUNCTIONS PRESENT IN THIS FILE:
 //!   * `interpolate_env()`     — expand `${VAR}` in one string.
 //!   * `interpolate_value()`   — recursively expand `${VAR}` in JSON values.
-//!   * `load_dotenv_file()`    — parse + install one `.env` file.
+//!   * `load_dotenv_file()`    — parse plus install one `.env` file.
 //!   * `load_env_stack()`      — load global env, then agent-local env.
+//!
+//! HOW IT WORKS:
+//!   * Interpolation uses `${UPPER_SNAKE}` names; missing vars become empty
+//!     strings. JSON traversal rewrites string leaves and passes numbers,
+//!     bools, and null through untouched.
+//!   * Dotenv parsing skips blanks and `#` comments, accepts an `export`
+//!     prefix, strips matching quotes, and strips ` #` suffix comments
+//!     only outside quotes. Boot order loads global first so local wins.
 //!
 //! HOW TO USE (example):
 //! ```rust
@@ -43,9 +50,8 @@ fn var_pattern() -> &'static Regex {
 /// Expand every `${VAR_NAME}` placeholder in `input`.
 ///
 /// # Description
-/// Looks each variable up with `lookup`. Missing variables become `""`
-/// (mirrors the TypeScript behaviour, which also warns — the warning is left
-/// to the caller so this stays a pure function).
+/// Looks each variable up with `lookup`. Missing variables become empty
+/// strings; the caller decides whether to warn, so this stays pure.
 ///
 /// # Example
 /// ```rust
@@ -95,9 +101,9 @@ pub fn interpolate_value(
 /// Parse one `KEY=VALUE` file and install the pairs into the process env.
 ///
 /// # Description
-/// Hand-rolled parser mirroring `src/index.ts`: skips blank lines and `#`
-/// comments, strips matching single/double quotes. Existing variables are
-/// overwritten (later source wins).
+/// Hand-rolled parser: skips blank lines and `#` comments, strips matching
+/// single/double quotes. Existing variables are overwritten so the later
+/// source wins.
 ///
 /// Returns the number of keys installed.
 ///
@@ -177,9 +183,8 @@ pub fn parse_dotenv(text: &str) -> HashMap<String, String> {
 /// Load the global `~/.gitagent/.env` and then `<agent_dir>/.env`.
 ///
 /// # Description
-/// Mirrors the CLI boot order in `src/index.ts`: global first, agent-local
-/// second so the agent file wins. Missing files are silently skipped.
-/// Returns `(global_loaded, local_loaded)`.
+/// Global loads first and agent-local second so the agent file wins.
+/// Missing files are silently skipped. Returns flags for each layer.
 ///
 /// # Example
 /// ```rust,no_run

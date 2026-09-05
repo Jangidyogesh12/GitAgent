@@ -2,16 +2,24 @@
 //! Module: engine::helpers::fsx
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Small filesystem helpers shared by every crate: resolve `~/` and relative
-//!   paths, read files lossily, write files creating parent dirs, and paginate
-//!   long text outputs (mirrors `src/tools/shared.ts` + `src/tools/read.ts`).
+//!   Small filesystem helpers shared by every tool: resolve `~/` and
+//!   relative paths, read files lossily, write files creating parent dirs,
+//!   and paginate long text with a continuation footer.
 //!
 //! FUNCTIONS PRESENT IN THIS FILE:
-//!   * `resolve_path()`          — expand `~/`, resolve relative to a base dir.
+//!   * `resolve_path()`          — expand `~/`, resolve relative to base dir.
 //!   * `read_file_lossy()`       — read a file to String (lossy UTF-8).
 //!   * `write_file_create_dirs()`— write a file, creating parents as needed.
 //!   * `ensure_dir()`            — `mkdir -p` helper.
 //!   * `paginate_lines()`        — 1-indexed offset/limit pagination w/ footer.
+//!
+//! HOW IT WORKS:
+//!   * `~/` expands via HOME; absolute paths pass through; relative paths
+//!     join onto the caller base (usually the agent dir).
+//!   * Lossy reads never fail on invalid UTF-8; binary detection stays in
+//!     the read tool via null-byte sniffing.
+//!   * Pagination defaults to 2000-line pages, errors when offset is past
+//!     end-of-file, and returns an empty footer when everything fit.
 //!
 //! HOW TO USE (example):
 //! ```rust,no_run
@@ -30,8 +38,8 @@ use std::path::{Path, PathBuf};
 /// Resolve a user-supplied path against `base_dir`.
 ///
 /// # Description
-/// Expands a leading `~/` to `$HOME`, leaves absolute paths untouched, and
-/// joins relative paths onto `base_dir`. Mirrors `read.ts` path resolution.
+/// Expands a leading `~/` to HOME, leaves absolute paths untouched, and
+/// joins relative paths onto `base_dir`.
 ///
 /// # Example
 /// ```rust
@@ -73,7 +81,8 @@ pub fn read_file_lossy(path: &Path) -> Result<String> {
 /// Write `content` to `path`, creating parent directories first.
 ///
 /// # Description
-/// Mirrors `write.ts` (`mkdir -p` parents by default). Returns bytes written.
+/// Creates missing parents (mkdir-p style) before writing. Returns bytes
+/// written.
 ///
 /// # Example
 /// ```rust,no_run
@@ -108,9 +117,8 @@ pub fn ensure_dir(path: &Path) -> Result<()> {
 /// Paginate text with 1-indexed `offset` and `limit`.
 ///
 /// # Description
-/// Mirrors `paginateLines()` in the TS tools: page defaults to 2000 lines,
-/// errors when `offset` is past EOF, and returns a footer telling the model
-/// how to continue (`footer` is empty when everything fit).
+/// Pages default to 2000 lines; errors when `offset` is past end-of-file;
+/// returns a footer telling the model how to continue (empty when all fit).
 ///
 /// # Example
 /// ```rust

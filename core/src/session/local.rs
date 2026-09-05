@@ -24,7 +24,7 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 
-/// Inputs to `init_local_session()` (mirrors the TS opts object).
+/// Inputs to `init_local_session()`: clone source + auth + resume target.
 #[derive(Debug, Clone)]
 pub struct SessionOptions {
     /// Remote repo URL (https).
@@ -98,7 +98,7 @@ impl LocalSession {
     /// # Description
     /// The security-critical step: `git remote set-url origin <clean>` runs
     /// even when commit/push fail (best-effort), so tokens never linger in
-    /// `.git/config`. Mirrors TS `finalize()`.
+    /// `.git/config`.
     ///
     /// # Example
     /// ```rust,no_run

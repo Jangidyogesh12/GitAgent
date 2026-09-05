@@ -2,25 +2,35 @@
 //! Module: engine::helpers::text
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Text budgeting helpers ported from `src/tools/shared.ts` (`truncateOutput`),
-//!   `src/tool-factory.ts` (50k truncation) and `src/compact.ts` (token math):
-//!   keep giant tool outputs / histories inside LLM context windows.
+//!   Text budgeting helpers that keep giant tool outputs and histories
+//!   inside model context windows. Three truncation directions plus a
+//!   cheap token estimator share one char-based counting approach.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Strategy — three interchangeable truncation strategies (keep head,
 //!     keep tail, keep both ends) selected by the caller per situation.
 //!
-//! CONSTANTS (mirror the TypeScript originals):
-//!   * `MAX_OUTPUT_CHARS` = 100_000 — cli/declarative output cap (tail kept).
+//! CONSTANTS (budgets + defaults):
+//!   * `MAX_OUTPUT_CHARS` = 100_000 — shell/script output cap (tail kept).
 //!   * `MAX_READ_LINES`   = 2000     — read tool default page size.
-//!   * `MAX_READ_BYTES`   = 100_000  — read tool page byte cap.
-//!   * `FACTORY_TRUNCATE` = 50_000   — tool-factory result cap (head kept).
+//!   * `MAX_READ_BYTES`   = 100_000  — read tool page char cap.
+//!   * `FACTORY_TRUNCATE` = 50_000   — generic tool-result cap (head kept).
 //!
 //! FUNCTIONS PRESENT IN THIS FILE:
-//!   * `estimate_tokens()` — `ceil(chars/4)` heuristic (matches compact.ts).
+//!   * `estimate_tokens()` — `ceil(chars/4)` heuristic.
 //!   * `truncate_tail()`   — keep the LAST n chars (for shell output).
 //!   * `truncate_head()`   — keep the FIRST n chars (for tool results).
-//!   * `truncate_middle()` — keep head+tail with a `...` marker (for history).
+//!   * `truncate_middle()` — keep head plus tail with a marker (history).
+//!
+//! HOW IT WORKS (why each direction):
+//!   * Tail for shell output: the most recent lines carry the exit status
+//!     and error summary, so older head content is dropped first.
+//!   * Head for tool results: the start usually holds the schema or lead
+//!     answer, so the tail is dropped first.
+//!   * Middle for history/compaction: both the opening context and the
+//!     latest turn matter, so the budget splits evenly across both ends.
+//!   * Token math `ceil(chars/4)` approximates one token per four chars;
+//!     it deliberately over-estimates so budgeting triggers early.
 //!
 //! HOW TO USE (example):
 //! ```rust
@@ -30,20 +40,20 @@
 //! ```
 //! ============================================================================
 
-/// Max tool output chars sent to the LLM (~100KB). Mirrors `MAX_OUTPUT`.
+/// Max tool output chars sent to the model (~100KB, tail kept).
 pub const MAX_OUTPUT_CHARS: usize = 100_000;
-/// Default page size of the `read` tool. Mirrors `MAX_LINES`.
+/// Default page size of the `read` tool (lines per page).
 pub const MAX_READ_LINES: usize = 2000;
-/// Byte cap of one `read` page. Mirrors `MAX_BYTES`.
+/// Char cap of one `read` page (~100KB).
 pub const MAX_READ_BYTES: usize = 100_000;
-/// Tool-factory result cap. Mirrors `buildTool()` truncation (50k).
+/// Generic tool-result cap (head kept, ~50KB).
 pub const FACTORY_TRUNCATE: usize = 50_000;
 
 /// Rough token estimate: `ceil(chars / 4)`.
 ///
 /// # Description
-/// Same heuristic as `compact.ts`/`context.ts` in TypeScript. Deliberately
-/// pessimistic so compaction triggers early rather than late.
+/// Cheap char-based heuristic. Deliberately pessimistic so compaction
+/// triggers early rather than late.
 ///
 /// # Example
 /// ```rust
@@ -58,8 +68,8 @@ pub fn estimate_tokens(text: &str) -> usize {
 /// Keep the LAST `max_chars` characters (for streaming shell output).
 ///
 /// # Description
-/// Prefixes a `[output truncated, showing last ~N chars]` marker when
-/// truncation happened — same marker text family as `cli.ts`.
+/// Prefixes a truncation marker naming the kept budget when content was
+/// dropped, so the model knows it sees the tail only.
 ///
 /// # Example
 /// ```rust
@@ -91,11 +101,11 @@ pub fn truncate_head(text: &str, max_chars: usize) -> String {
     format!("{head}\n...[truncated, showing first ~{max_chars} chars]")
 }
 
-/// Keep `head` + `tail` halves with an omission marker (for long histories).
+/// Keep `head` plus `tail` halves with an omission marker (long histories).
 ///
 /// # Description
-/// Mirrors the 10k tool-result compaction in `compact.ts` (half head, half
-/// tail). `budget` is split evenly between both ends.
+/// The `budget` is split evenly between both ends; the marker records the
+/// total char count so the model can gauge how much was omitted.
 ///
 /// # Example
 /// ```rust
@@ -120,7 +130,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn token_math_matches_ts_heuristic() {
+    fn token_math_uses_ceil_div_four() {
         assert_eq!(estimate_tokens(""), 0);
         assert_eq!(estimate_tokens("abcd"), 1);
         assert_eq!(estimate_tokens("abcde"), 2);

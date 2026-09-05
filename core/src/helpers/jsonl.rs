@@ -2,14 +2,20 @@
 //! Module: engine::helpers::jsonl
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Append-only `.jsonl` writers. Ports `src/audit.ts` (audit.jsonl),
-//!   `src/chat-history.ts` (chat-history/<branch>.jsonl) and
-//!   `src/schedule-runner.ts` (schedule-logs) — all three are "append one JSON
-//!   object per line" stores in the TypeScript original.
+//!   Append-only `.jsonl` line stores: one JSON object per line for audit
+//!   logs, per-branch chat history, and scheduler run logs. Writers create
+//!   parents on demand and append atomically per line; readers skip blank
+//!   and malformed lines fail-soft and return an empty vec for missing files.
 //!
 //! FUNCTIONS PRESENT IN THIS FILE:
-//!   * `append_jsonl()`  — serialise `value` + append one line (creates file).
+//!   * `append_jsonl()`  — serialise `value` plus append one line.
 //!   * `read_jsonl()`    — read back all non-empty lines as JSON values.
+//!
+//! HOW IT WORKS:
+//!   * Files open in create-plus-append mode so concurrent writers only
+//!     ever add lines. Each value is serialised compactly plus newline.
+//!   * Reads treat missing files as empty history; per-line parse errors
+//!     are skipped so one corrupt line never discards the whole log.
 //!
 //! HOW TO USE (example):
 //! ```rust,no_run
@@ -25,9 +31,8 @@ use std::path::Path;
 /// Append one JSON value as a single line to `path`.
 ///
 /// # Description
-/// Creates parent directories and the file itself on demand. File is opened
-/// in append mode so concurrent writers only ever add lines (same guarantee
-/// the TS `fs.appendFile` gave the audit logger).
+/// Creates parent directories and the file itself on demand. The file opens
+/// in append mode so concurrent writers only ever add lines.
 ///
 /// # Example
 /// ```rust,no_run
@@ -55,8 +60,8 @@ pub fn append_jsonl(path: &Path, value: &serde_json::Value) -> Result<()> {
 /// Read every non-empty line of a `.jsonl` file as JSON.
 ///
 /// # Description
-/// Missing file → empty vec (callers treat "no history yet" as normal).
-/// Malformed lines are skipped, not fatal — mirrors the fail-soft TS readers.
+/// Missing file yields an empty vec. Malformed lines are skipped rather
+/// than failing the whole read.
 ///
 /// # Example
 /// ```rust,no_run

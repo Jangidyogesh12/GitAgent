@@ -2,10 +2,10 @@
 //! Module: engine::hooks::config
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Hook configuration types + loading. Ports the `HooksConfig` shape from
-//!   `src/hooks.ts` (`hooks/hooks.yaml` → per-event definition lists) and
-//!   `mergeHooksConfigs()` from `src/plugins.ts` (agent hooks first, then
-//!   each plugin's, concatenated per event).
+//!   Hook configuration types + loading. Reads `hooks/hooks.yaml` into
+//!   per-event definition lists, and merges the agent-level config with
+//!   each plugin's config by concatenating per event (agent entries first
+//!   so they run before plugin entries).
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
 //!   * `HookDefinition`    — {script, description?, base_dir?}.
@@ -42,7 +42,7 @@ pub struct HookDefinition {
     pub base_dir: String,
 }
 
-/// Per-lifecycle-event hook lists (mirrors the TS HooksConfig events).
+/// Per-lifecycle-event hook lists (one list per supported event name).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HooksConfig {
     /// Run at session start; `block` aborts the session (exit 1 in CLI).
@@ -92,8 +92,8 @@ impl HooksConfig {
 /// Load `<agent>/hooks/hooks.yaml` (missing/invalid → empty config).
 ///
 /// # Description
-/// Fail-soft like the TS loader: hooks are auxiliary machinery; a missing
-/// file simply means "no hooks".
+/// Fail-soft by design: hooks are auxiliary machinery, so a missing file
+/// simply means "no hooks".
 ///
 /// # Example
 /// ```rust,no_run
@@ -117,8 +117,8 @@ pub fn load_hooks_config(agent_dir: &Path) -> HooksConfig {
 /// Concatenate base + plugin hook lists per event (agent first).
 ///
 /// # Description
-/// Ports `mergeHooksConfigs()`: per-event arrays concatenated, agent hooks
-/// first so they run before plugin hooks.
+/// Per-event arrays are concatenated with agent hooks first so they run
+/// before plugin hooks.
 ///
 /// # Example
 /// ```rust

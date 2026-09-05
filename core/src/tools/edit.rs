@@ -2,14 +2,24 @@
 //! Module: engine::tools::edit
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The `edit` tool — surgical find-and-replace. Ports `src/tools/edit.ts`:
-//!   rejects identical old/new + empty old_string + 0 matches + ambiguous
-//!   multi-match without replace_all; `regex` mode via the `regex` crate
-//!   (Rust equivalent of JS RegExp with identical group-reference syntax);
-//!   `replace_all` uses split/join; final "identical content" guard.
+//!   The `edit` tool — surgical find-and-replace in a file.
+//!   Flow: resolve `path`, load file text, run pure `apply_edit`, write
+//!   back on success. Guards: empty search rejected, identical old/new
+//!   rejected, zero matches rejected, ambiguous multi-match rejected
+//!   unless `replace_all` is set, plus a final identical-content guard.
 //!
 //! TYPES PRESENT IN THIS FILE:
-//!   * `EditTool` — `new(cwd)`; pure helper `apply_edit()`.
+//!   * `EditTool` — `new(cwd)`; async `execute` wraps pure `apply_edit()`.
+//!
+//! HOW IT WORKS (data flow + modes):
+//!   * Literal mode counts substring occurrences with `matches`; regex mode
+//!     compiles `old` with optional inline flags (`i` case-insensitive,
+//!     `m` multi-line, `s` dot-matches-newline) and counts via find
+//!     iteration. `g`-style global replace is controlled by `replace_all`.
+//!   * Single match without the flag replaces the first occurrence;
+//!     multi-match without the flag errors so edits stay unambiguous.
+//!   * Regex replacements support `$1`-style capture references; both modes
+//!     use split/join style full replacement when `replace_all` is true.
 //!
 //! HOW TO USE (example):
 //! ```rust
@@ -51,10 +61,10 @@ impl EditTool {
 /// Apply one edit to `text`; returns (new_text, replacements).
 ///
 /// # Description
-/// Pure core of the tool (unit-testable without files). Rules mirror TS:
-/// empty `old` → Err; identical old/new → Err; 0 matches → Err; >1 match
-/// without `replace_all` → ambiguity Err; regex mode compiles `old` with
-/// `flags` (`i`/`m`/`s` mapped; `g` implied by `replace_all`).
+/// Pure core of the tool (unit-testable without files). Rules: empty `old`
+/// errors; identical old/new in literal mode errors; zero matches errors;
+/// more than one match without `replace_all` errors as ambiguous; regex
+/// mode compiles `old` with `flags` (`i`/`m`/`s` mapped to inline flags).
 ///
 /// # Example
 /// ```rust
@@ -77,7 +87,7 @@ pub fn apply_edit(
         anyhow::bail!("`old_string` and `new_string` are identical — nothing to do");
     }
     if use_regex {
-        // Map JS-style flags onto regex-crate inline flags.
+        // Map single-letter flags onto inline regex flags.
         let mut prefix = String::new();
         if flags.contains('i') {
             prefix.push_str("(?i)");
@@ -99,7 +109,7 @@ pub fn apply_edit(
                 "pattern matches {count} times — set replace_all=true or narrow the pattern"
             );
         }
-        // `$1`-style group refs work in the regex crate the same as JS.
+        // `$1`-style group references are expanded by the regex engine.
         let out = if replace_all {
             re.replace_all(text, new).into_owned()
         } else {

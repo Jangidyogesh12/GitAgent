@@ -3,15 +3,17 @@
 //! ----------------------------------------------------------------------------
 //! WHAT THIS CRATE IS FOR:
 //!   The assembly line — turns an agent DIRECTORY into a `LoadedAgent`
-//!   (manifest + one big system prompt + session id). Ports `src/loader.ts`,
-//!   the heart of the TS system: `loadAgent()` reads agent.yaml, resolves
-//!   `extends`/dependencies (shallow git clones), reads identity files,
-//!   discovers skills/knowledge/workflows/sub-agents/examples, and joins the
-//!   sections with "\n\n" in the exact TS order.
+//!   (manifest + one big system prompt + session id). Inputs: agent dir,
+//!   optional model flag, optional session id. Steps: read `agent.yaml`,
+//!   shallow-clone `extends`/dependencies, read identity files, discover
+//!   skills/knowledge/workflows/sub-agents/examples/plugins, then join the
+//!   sections with "\n\n" in a fixed deterministic order. Outputs:
+//!   `LoadedAgent` ready for the session loop. Invariant: missing or
+//!   invalid optional pieces are skipped, never fatal.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Builder — `PromptBuilder` accumulates optional sections, then
-//!     `build()` joins them (skipping empties, like TS).
+//!     `build()` joins them (skipping empties).
 //!   * Facade — `load_agent()` is the single front door hiding discovery.
 //!
 //! MODULES PRESENT IN THIS CRATE:

@@ -2,12 +2,25 @@
 //! Crate: sdk
 //! ----------------------------------------------------------------------------
 //! WHAT THIS CRATE IS FOR:
-//!   The public programmatic API — the Rust equivalent of `src/sdk.ts` +
-//!   `src/exports.ts`. `query()` runs the FULL pipeline (load agent → build
-//!   tools → gates → LLM → loop) and streams normalised `SdkMessage`s over a
-//!   tokio channel; `Session` keeps one agent alive across turns; `tool()`
-//!   defines custom closure tools; `permissions` adds Claude-Code-style
-//!   allow/deny modes.
+//!   The public programmatic API for embedding the agent in Rust code.
+//!   `query()` runs the full single-shot pipeline (load agent → build tools
+//!   → gates → model client → agent loop) and streams normalised
+//!   `SdkMessage`s over a tokio channel; `Session` keeps one agent alive
+//!   across turns; `tool()` defines custom closure tools; `permissions`
+//!   adds allow/deny modes and rules.
+//!
+//! HOW IT WORKS:
+//!   * `query(opts)`: spawns a background task running `run_query()` and
+//!     returns the receiver. Setup failures arrive as `SdkMessage::Error`;
+//!     success ends with `System("session_end …")` and channel close.
+//!   * `Session::open(opts)` performs the same load + registry + gates +
+//!     client build once, then each `send(prompt)` runs one turn through
+//!     the shared `Agent` (transcript accumulates across turns).
+//!   * Tools: builtin + learning + declarative + plugin (collision-skipped)
+//!     + MCP + `extra_tools`, narrowed by the allowlist-then-denylist
+//!     filter in `build_registry()`.
+//!   * Gates run in order: `PermissionGate` (mode + ordered allow/deny
+//!     rules) first, then the script `HookGate` when hooks are configured.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Facade — `query()` hides loader/tools/hooks/plugins/mcp/llm/engine.
@@ -17,7 +30,7 @@
 //!
 //! MODULES PRESENT IN THIS CRATE:
 //!   * `types`       — SdkMessage, QueryOptions, ToolSpec.
-//!   * `permissions` — PermissionGate (Claude-Code-style modes + rules).
+//!   * `permissions` — PermissionGate (modes + rules).
 //!   * `fns`         — FnTool: closure-defined custom tools.
 //!   * `query`       — query() Facade + build_registry().
 //!   * `session`     — multi-turn Session handle.

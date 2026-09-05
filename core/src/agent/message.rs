@@ -2,18 +2,26 @@
 //! Module: engine::agent::message
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The conversation transcript model. Ports the `AgentMessage` family from
-//!   pi-agent-core (which the TS `sdk.ts` event-mapping code consumes):
-//!   user turns, assistant turns (text / thinking / tool calls), tool results,
-//!   stop reasons, and token/cost usage.
+//!   The conversation transcript model: user turns, assistant turns (text,
+//!   thinking traces, tool calls), tool results, stop reasons, and
+//!   token/cost usage. Failures travel as values (error assistant turns
+//!   and error-flagged results) so one bad provider or tool call ends the
+//!   turn cleanly instead of ending the session.
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `StopReason`       — why the model stopped (Stop/Length/ToolUse/...).
-//!   * `Usage`            — input/output/total tokens + USD cost.
+//!   * `Usage`            — input/output/total tokens plus USD cost.
 //!   * `ContentBlock`     — Text | Thinking | ToolCall.
-//!   * `AssistantMessage` — one assistant turn + `text()`/`tool_calls()`.
-//!   * `ToolResultMessage`— tool_call_id + content + is_error flag.
+//!   * `AssistantMessage` — one assistant turn plus `text()`/`tool_calls()`.
+//!   * `ToolResultMessage`— tool_call_id plus content plus is_error flag.
 //!   * `AgentMessage`     — User | Assistant | ToolResult (the transcript).
+//!
+//! HOW IT WORKS (invariants):
+//!   * Tool calls pair by stable id: every ToolCall id must have a matching
+//!     ToolResult id, because providers reject orphaned calls. Compaction
+//!     may shrink result content but never drops entries.
+//!   * `text()` concatenates Text blocks only; Thinking stays visible in
+//!     the CLI but never counts as the final answer.
 //!
 //! HOW TO USE (example):
 //! ```rust
@@ -29,8 +37,8 @@ use serde::{Deserialize, Serialize};
 /// Why the model stopped generating this turn.
 ///
 /// # Description
-/// Mirrors pi-agent-core's stop reasons. `Length` triggers the bounded
-/// auto-continue nudge in the loop; `Error`/`Aborted` stop cleanly.
+/// `Length` triggers the bounded auto-continue nudge in the loop;
+/// `Error` and `Aborted` stop cleanly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StopReason {
     /// Natural end of turn (final answer, no tool calls).
@@ -45,11 +53,11 @@ pub enum StopReason {
     Aborted,
 }
 
-/// Token + cost accounting for one assistant turn.
+/// Token plus cost accounting for one assistant turn.
 ///
 /// # Description
-/// Mirrors `Usage` in pi-agent-core; aggregated by `CostTracker` in the
-/// observe crate. `cost_usd` is 0 when the provider reports no pricing.
+/// Aggregated across turns by the cost tracker. Cost is zero when the
+/// provider reports no pricing.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Usage {
     /// Prompt tokens consumed.
@@ -83,8 +91,8 @@ impl Usage {
 /// One block inside an assistant message.
 ///
 /// # Description
-/// A turn can mix plain text, chain-of-thought (`Thinking`, from DeepSeek /
-/// reasoning models), and any number of tool calls.
+/// A turn can mix plain text, reasoning traces (`Thinking`, from reasoning
+/// models), and any number of tool calls.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ContentBlock {
     /// Visible answer text.
@@ -102,12 +110,12 @@ pub enum ContentBlock {
     },
 }
 
-/// One assistant turn: blocks + stop reason + optional error + usage.
+/// One assistant turn: blocks plus stop reason plus optional error plus usage.
 ///
 /// # Description
-/// Constructors + accessors keep call sites readable; `failure()` builds the
-/// error-as-value message the loop uses instead of throwing (a lesson ported
-/// from the TS harness, where thrown provider errors tore down sessions).
+/// Constructors plus accessors keep call sites readable; `failure()` builds
+/// the error-as-value message the loop uses instead of raising, so provider
+/// failures stay visible as data.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssistantMessage {
     /// Ordered content blocks of this turn.
@@ -199,8 +207,8 @@ impl AssistantMessage {
 /// The result of executing one tool call, fed back to the model.
 ///
 /// # Description
-/// `is_error` marks failures as *data* (the model sees "Error: ...") instead
-/// of control flow — the TS `flattenToolResult` convention.
+/// `is_error` marks failures as data (the model sees an error string)
+/// instead of control flow.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolResultMessage {
     /// Must match the originating ToolCall `id`.
@@ -216,9 +224,9 @@ pub struct ToolResultMessage {
 /// One transcript entry: user turn, assistant turn, or tool result.
 ///
 /// # Description
-/// The transcript is the agent's memory of the session; the compactor may
-/// *summarise* it for the model but (invariant) never drops entries, because
-/// an orphaned tool_use without its tool_result makes providers return 400.
+/// The transcript is the session memory; compaction may shrink entries for
+/// the model view but never drops them, because an orphaned tool call
+/// without its result makes providers reject the request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AgentMessage {
     /// Human (or system-injected follow-up) text.

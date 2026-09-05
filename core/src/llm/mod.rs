@@ -2,8 +2,7 @@
 //! Crate: llm
 //! ----------------------------------------------------------------------------
 //! WHAT THIS CRATE IS FOR:
-//!   The LLM provider layer — the Rust replacement for `@mariozechner/pi-ai`
-//!   (the model registry the TS code imported). ONE OpenAI-compatible
+//!   The LLM provider layer — ONE OpenAI-compatible
 //!   streaming client covers OpenAI, Anthropic-via-gateway, Ollama, Lyzr and
 //!   any `--base-url` endpoint, because they all speak the same wire format.
 //!
@@ -11,7 +10,7 @@
 //!   * Strategy — `OpenAiCompat` implements `engine::agent::LlmClient`, so
 //!     the engine stays provider-agnostic.
 //!   * Factory — `resolve_model()` builds a `ModelSpec` from a
-//!     `provider:model[@base-url]` string (the TS `getModel` replacement).
+//!     `provider:model[@base-url]` string.
 //!   * Chain of Responsibility — `complete_with_fallback()` tries preferred
 //!     then fallbacks in order, with bounded retries on transient errors.
 //!   * Decorator — retry/backoff wraps the raw SSE call without changing it.

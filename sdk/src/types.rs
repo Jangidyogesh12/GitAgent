@@ -2,8 +2,23 @@
 //! Module: sdk::types
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Public SDK data types. Ports `src/sdk-types.ts`: the `GCMessage` union
-//!   (here `SdkMessage`), `QueryOptions`, and the custom-tool spec.
+//!   Public SDK data types: the normalised stream enum plus the per-query
+//!   options struct (with minimal + builder constructors).
+//!
+//! HOW IT WORKS:
+//!   * `SdkMessage` is the single stream item: `Delta` fragments stream text
+//!     incrementally, `Assistant` carries a finished turn, `ToolUse` /
+//!     `ToolResult` bracket each tool call by id (result flags errors),
+//!     `System` carries lifecycle notes (`session_start`, `agent_start`,
+//!     `session_end`, `hook_blocked`…), and `Error` is the terminal
+//!     whole-query failure.
+//!   * `QueryOptions` bundles everything one call needs: agent `dir` +
+//!     `prompt`, optional model/max-turns overrides, an optional tool
+//!     allowlist plus a denylist (allowlist applies first), an optional
+//!     system-prompt suffix appended with `"\n\n"`, extra custom tools, the
+//!     permission mode + ordered rules, and an optional session-id override
+//!     (fresh id when `None`). `new()` supplies the minimal dir + prompt;
+//!     `with_*` builders layer overrides.
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `SdkMessage`   — Delta | Assistant | ToolUse | ToolResult | System.
@@ -20,7 +35,7 @@
 
 use std::path::PathBuf;
 
-/// One normalised stream item from `query()` (ports `GCMessage`).
+/// One normalised stream item from `query()`.
 #[derive(Debug, Clone)]
 pub enum SdkMessage {
     /// A text fragment (streaming delta).
@@ -37,7 +52,7 @@ pub enum SdkMessage {
     Error(String),
 }
 
-/// Options for one `query()` call (ports `QueryOptions`).
+/// Options for one `query()` call.
 ///
 /// `Clone` (not `Debug`) — the tool registry holds trait objects.
 #[derive(Clone)]

@@ -2,10 +2,24 @@
 //! Module: cli::render (src/render.rs)
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Stream renderer (Observer of the SDK channel). Ports `handleEvent()`
-//!   from `src/index.ts`: print text deltas inline, dim thinking (skipped —
-//!   SDK surfaces text only), announce tool calls with 60-char arg previews,
-//!   preview results at 200 chars, print per-turn usage, return exit code.
+//!   Stream renderer: drains one SDK message channel to the terminal and
+//!   reports an exit code. It subscribes to the `SdkMessage` stream (the
+//!   Observer end) and formats each variant for human reading.
+//!
+//! HOW IT WORKS:
+//!   * Loop: `rx.recv().await` until the sender closes; `code` starts at 0
+//!     and flips to 1 the first time an `Error` arrives.
+//!   * `Delta(text)` prints the fragment inline with no newline (streaming
+//!     effect via stdout flush); the follow-up `Assistant(_)` prints the
+//!     terminating newline (text was already streamed).
+//!   * `ToolUse(_, name, args)` announces `⚙ name(<60-char arg preview>)`;
+//!     `ToolResult(_, name, content, is_error)` prints `✓/✗ name:
+//!     <200-char trimmed preview>` (tool errors stay model-visible data and
+//!     do not flip the exit code by themselves).
+//!   * `System(s)` prints a dim parenthetical line; `Error(e)` prints to
+//!     stderr and sets exit 1. A trailing newline is printed on close.
+//!   * `preview()` collapses whitespace to single spaces, then truncates to
+//!     `n` chars plus `…` for the arg/result previews above.
 //!
 //! FUNCTIONS PRESENT IN THIS FILE:
 //!   * `render_stream()` — drain the channel, print, return exit code.

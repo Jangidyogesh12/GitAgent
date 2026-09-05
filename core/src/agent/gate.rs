@@ -2,10 +2,10 @@
 //! Module: engine::agent::gate
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The `beforeToolCall` seam from pi-agent-core: interceptors consulted
-//!   before EVERY tool execution. Ports the TS `pre_tool_use` hooks
-//!   (`src/hooks.ts` + `src/sdk-hooks.ts`) and the Claude-Code-style
-//!   permission gate (`rust/gitagent-rs/.../permissions.rs`).
+//!   Pre-tool-call policy seam: interceptors consulted before EVERY tool
+//!   execution. Gates can allow, rewrite args, or deny with a model-visible
+//!   message. Denials become error result text so the model sees why the
+//!   call was blocked instead of the session failing.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Chain of Responsibility — gates run in order; the first
@@ -15,7 +15,12 @@
 //! TYPES PRESENT IN THIS FILE:
 //!   * `GateDecision` — Allow | Modify(new_args) | Deny(message).
 //!   * `ToolGate`     — async `check(tool_name, args)` policy trait.
-//!   * `AllowAllGate` — no-op gate (everything passes), useful default/tests.
+//!   * `AllowAllGate` — no-op gate (everything passes), default for tests.
+//!
+//! HOW IT WORKS:
+//!   * The runner walks the gate list per call; Allow continues, Modify
+//!     replaces args for downstream gates and the tool, Deny stops the
+//!     chain and produces the error result immediately.
 //!
 //! HOW TO USE (example):
 //! ```rust,no_run
@@ -29,9 +34,8 @@ use async_trait::async_trait;
 /// Verdict of one gate for one tool call.
 ///
 /// # Description
-/// `Modify` replaces the args the tool will receive (hook "modify" action);
-/// `Deny` becomes the tool result text so the MODEL sees why it was blocked
-/// (mirrors `wrapToolWithHooks` throwing → caught → result string).
+/// `Modify` replaces the args the tool will receive; `Deny` becomes the
+/// tool result text so the model sees why it was blocked.
 #[derive(Debug, Clone)]
 pub enum GateDecision {
     /// Proceed with the original args.

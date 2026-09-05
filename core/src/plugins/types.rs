@@ -2,12 +2,12 @@
 //! Module: engine::plugins::types
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Plugin manifest types. Ports `src/plugin-types.ts` + the `plugin.yaml`
-//!   validation in `src/plugins.ts`: required id/name/version/description,
-//!   kebab-case id, `provides` (tools/hooks/skills/prompt), `config`
-//!   (properties with type/description/default/env + required list),
-//!   optional `entry` (programmatic module) and `engine` (only `>=` ranges
-//!   understood, informational here).
+//!   Plugin manifest types. Defines the `plugin.yaml` shape and its
+//!   validation: required id/name/version/description, kebab-case id,
+//!   `provides` (tools/hooks/skills/prompt), `config` (properties with
+//!   type/description/default/env plus a required list), optional `entry`
+//!   (programmatic module, informational) and `engine` (version range,
+//!   only `>=` ranges interpreted, informational).
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `PluginManifest`   — plugin.yaml shape (+ `validate()`).
@@ -48,7 +48,7 @@ pub struct PluginConfigSchema {
     /// Declared properties.
     #[serde(default)]
     pub properties: std::collections::HashMap<String, ConfigProperty>,
-    /// Required keys (missing → warning only, like TS).
+    /// Required keys (missing → warning only, non-fatal).
     #[serde(default)]
     pub required: Vec<String>,
 }
@@ -81,7 +81,7 @@ pub struct PluginHookDef {
     pub description: String,
 }
 
-/// `plugin.yaml` manifest (ports `PluginManifest`).
+/// `plugin.yaml` manifest: identity + contributions + config schema.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
     /// Kebab-case id (enforced).

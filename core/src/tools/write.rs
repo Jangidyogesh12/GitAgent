@@ -2,15 +2,26 @@
 //! Module: engine::tools::write
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The `write` tool — create/overwrite a file, parents auto-created.
-//!   Ports `src/tools/write.ts`: mkdir -p unless `createDirs === false`,
-//!   returns `Wrote N bytes to <path>`.
+//!   The `write` tool — create or overwrite a file, creating parents.
+//!   Flow: validate `path`, resolve against tool cwd, optionally run
+//!   mkdir-p on the parent directory, write bytes, return a
+//!   `Wrote N bytes to <path>` confirmation or an error result value.
 //!
 //! DESIGN PATTERNS USED:
-//!   * Strategy + Command — `AgentTool` impl; Sequential (mutates files).
+//!   * Strategy + Command — `AgentTool` impl; Sequential because it mutates
+//!     the filesystem and must not race with other writers.
 //!
 //! TYPES PRESENT IN THIS FILE:
-//!   * `WriteTool` — `new(cwd)`.
+//!   * `WriteTool` — `new(cwd)`; `createDirs` arg defaults to true.
+//!
+//! HOW IT WORKS (data flow + safety):
+//!   * Path resolution mirrors the read tool: `~/` expands to HOME,
+//!     relative paths join onto `cwd`, absolute paths pass through.
+//!   * Parent creation is skipped when `createDirs` is false or the parent
+//!     is empty; otherwise `create_dir_all` runs first so nested writes
+//!     succeed without a separate mkdir step.
+//!   * Byte count uses content length; failures (bad path, permissions)
+//!     become error result values so the model sees them as data.
 //!
 //! HOW TO USE (example):
 //! ```rust,no_run

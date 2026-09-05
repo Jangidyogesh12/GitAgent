@@ -2,14 +2,27 @@
 //! Module: sdk::fns
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Custom closure-defined tools. Ports the TS `tool(name, description,
-//!   inputSchema, handler)` helper from `src/sdk.ts`: wrap a plain Rust
-//!   closure into a real `AgentTool` (Strategy) so SDK users can give the
-//!   agent new hands in a few lines.
+//!   Custom closure-defined tools: lets SDK users hand the agent new
+//!   capabilities in a few lines by wrapping a plain synchronous Rust
+//!   closure into a real `AgentTool` (Strategy) that can be pushed into
+//!   `QueryOptions::extra_tools`.
+//!
+//! HOW IT WORKS:
+//!   * `tool(name, description, input_schema, handler)` builds an `FnTool`
+//!     storing the registry name, the model-visible description, the JSON
+//!     Schema value advertised as `parameters()`, and the handler behind an
+//!     `Arc` so the tool is cheaply cloneable into the registry.
+//!   * Execution: `AgentTool::execute()` clones the handler `Arc` and runs
+//!     it inside `spawn_blocking` so blocking user code never stalls the
+//!     async agent loop; `Ok(text)` becomes a success `ToolOutput`,
+//!     `Err` becomes a model-visible error result (never a session crash),
+//!     and a panicked/`JoinError` path becomes an error result too.
+//!   * Mode: always `Sequential` (fail-safe — user closures may touch
+//!     anything, so they never run in parallel with other tools).
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
 //!   * `FnTool` — closure-backed tool (Sequential: closures may do anything).
-//!   * `tool()` — constructor helper mirroring the TS `tool()` signature.
+//!   * `tool()` — constructor helper for closure tools.
 //!
 //! HOW TO USE (example):
 //! ```rust
@@ -79,7 +92,7 @@ impl AgentTool for FnTool {
     }
 }
 
-/// Define a custom tool from a closure (mirrors TS `tool()`).
+/// Define a custom tool from a closure.
 ///
 /// # Description
 /// `handler` receives the args JSON and returns the result text; `Err`

@@ -3,7 +3,15 @@
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
 //!   Model configuration types from `agent.yaml → model:` plus the
-//!   provider→API-key-env mapping from `src/index.ts` (the startup key check).
+//!   provider→API-key-env mapping used by the startup key check. Inputs:
+//!   the `model:` table (preferred spec, fallback list, sampling
+//!   constraints) and a provider name prefix. Steps: serde parses
+//!   `preferred`/`fallback`/`constraints` (accepting both snake_case and
+//!   camelCase keys); `provider_api_key()` maps the provider to its
+//!   required env var. Outputs: typed `ModelConfig` and the env-var name
+//!   ("" means keyless, e.g. ollama/mock). Invariant: all constraint
+//!   fields are optional so unset sampling knobs fall back to provider
+//!   defaults.
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
 //!   * `ModelConstraints` — temperature/max_tokens/top_p/top_k/stop_sequences.
@@ -22,8 +30,9 @@ use serde::{Deserialize, Serialize};
 /// Generation constraints from `model.constraints` (all optional).
 ///
 /// # Description
-/// Mirrors the TS manifest constraints; the SDK accepts both snake_case and
-/// camelCase (`max_tokens`/`maxTokens`) — here serde aliases cover both.
+/// Sampling knobs for one turn. Both snake_case and camelCase keys are
+/// accepted (`max_tokens`/`maxTokens`, `top_p`/`topP`, `top_k`/`topK`) —
+/// serde aliases cover both spellings.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModelConstraints {
     /// Sampling temperature.
@@ -64,9 +73,10 @@ pub struct ModelConfig {
 /// Map a provider prefix to its required API-key env var.
 ///
 /// # Description
-/// Ports the TS startup key check (`anthropic`→`ANTHROPIC_API_KEY`, ...).
-/// Returns `""` for keyless providers (`ollama`, `mock`) — the caller treats
-/// empty as "no key required".
+/// Used by the startup key check: `anthropic`→`ANTHROPIC_API_KEY`,
+/// `openai`→`OPENAI_API_KEY`, and so on. Returns `""` for keyless
+/// providers (`ollama`, `mock`, unknown) — the caller treats empty as
+/// "no key required".
 ///
 /// # Example
 /// ```rust

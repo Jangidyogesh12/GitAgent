@@ -2,12 +2,12 @@
 //! Module: engine::mcp::manager
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The MCP client manager (Facade + Adapter + RAII). Ports
-//!   `src/mcp/manager.ts`: parallel fail-soft setup over all configured
-//!   servers, stdio JSON-RPC handshake (initialize →
-//!   notifications/initialized → tools/list with cursor pagination), tool
-//!   registration under sanitised `<server>__<tool>` names, `tools/call`
-//!   with `flatten_result()`, and idempotent `cleanup()` killing children.
+//!   The MCP client manager (Facade + Adapter + RAII). Connects all
+//!   configured servers in parallel and fail-soft, speaks stdio JSON-RPC
+//!   (initialize → notifications/initialized → tools/list with cursor
+//!   pagination), registers each remote tool under a sanitised
+//!   `<server>__<tool>` name, invokes tools via `tools/call` with
+//!   `flatten_result()`, and shuts children down via idempotent `cleanup()`.
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
 //!   * `McpTool`         — Adapter: remote tool as `AgentTool` (Sequential).
@@ -35,10 +35,11 @@ use crate::mcp::types::{sanitise_tool_name, McpServerConfig, DEFAULT_TIMEOUT_MS}
 /// Flatten MCP result content blocks into model-readable text.
 ///
 /// # Description
-/// Ports `flattenToolResult`: text blocks joined with `\n`; image/audio →
-/// `[image: <mime>, data omitted]`; resource → text or
-/// `[resource: <uri> (<mime>)]`; resource_link → `[resource_link: <uri>]`;
-/// empty + structuredContent → its JSON; `isError` → `"Error: " + text`.
+/// Text blocks are joined with `\n`; image/audio become
+/// `[image: <mime>, data omitted]`; resource blocks yield their embedded
+/// text or `[resource: <uri> (<mime>)]`; resource_link becomes
+/// `[resource_link: <uri>]`; empty content with structuredContent falls
+/// back to its JSON; `isError` prefixes the output with `"Error: "`.
 ///
 /// # Example
 /// ```rust
@@ -135,7 +136,7 @@ impl AgentTool for McpTool {
         self.schema.clone()
     }
     fn execution_mode(&self) -> ExecutionMode {
-        // Fail-closed like TS metadata (isConcurrencySafe: false).
+        // Fail-closed: remote tools run sequentially (not concurrency-safe).
         ExecutionMode::Sequential
     }
     async fn execute(&self, _id: &str, args: serde_json::Value) -> anyhow::Result<ToolOutput> {
@@ -199,9 +200,9 @@ impl McpManager {
     ///
     /// # Description
     /// `config` is the raw `mcp_servers` table (`{name: McpServerConfig}`).
-    /// Each server connects independently; failures warn + skip (a bad
-    /// server never kills the session — the TS fail-soft rule). Tool names
-    /// are sanitised + capped + collision-checked against each other.
+    /// Each server connects independently; failures warn + skip so a bad
+    /// server never kills the session. Tool names are sanitised + capped
+    /// + collision-checked against each other.
     ///
     /// # Example
     /// ```rust,no_run
@@ -215,7 +216,7 @@ impl McpManager {
         let mut servers_cfg: Vec<(String, McpServerConfig)> = vec![];
         if let Some(obj) = config.as_object() {
             for (name, raw) in obj {
-                // `${VAR}` interpolation across the raw JSON first (TS rule).
+                // `${VAR}` interpolation across the raw JSON first.
                 let lookup = |k: &str| std::env::var(k).ok();
                 let interp = crate::helpers::interpolate_value(raw, &lookup);
                 match serde_json::from_value::<McpServerConfig>(interp) {
@@ -239,7 +240,7 @@ impl McpManager {
             let (srv, mut ts) = opt;
             let server = Arc::new(Mutex::new(srv));
             for t in ts.drain(..) {
-                // Collision check (TS rule): skip clashing names.
+                // Collision check: skip clashing names.
                 if tools
                     .iter()
                     .any(|e: &Arc<dyn AgentTool>| e.name() == t.registered_name)
@@ -309,7 +310,7 @@ async fn connect_one(
         } => (command, args, env, cwd, timeout_ms),
         McpServerConfig::Http { kind, url, .. } => {
             anyhow::bail!(
-                "transport {} ({url}) not implemented in this port — configure a stdio server instead",
+                "transport {} ({url}) not implemented here — configure a stdio server instead",
                 kind.unwrap_or_else(|| "http".into())
             );
         }
@@ -363,7 +364,7 @@ async fn connect_one(
         .write_all(format!("{}\n", serde_json::to_string(&noted)?).as_bytes())
         .await?;
 
-    // tools/list following pagination cursors (TS rule).
+    // tools/list following pagination cursors until no nextCursor.
     let mut tools = vec![];
     let mut cursor: Option<String> = None;
     loop {

@@ -2,14 +2,14 @@
 //! Crate: plugins
 //! ----------------------------------------------------------------------------
 //! WHAT THIS CRATE IS FOR:
-//!   The plugin system. Ports `src/plugins.ts` + `src/plugin-types.ts`:
-//!   `plugin.yaml` manifests (id kebab-case, provides {tools, hooks, skills,
-//!   prompt}, config schema with user > env > default resolution),
-//!   3-scope discovery (local `plugins/` → global `~/.gitagent/plugins/` →
-//!   installed `.gitagent/plugins/`), auto-install from `source` git URLs,
-//!   tool-name collision detection (whole plugin skipped on clash), and
-//!   programmatic-entry stubs (register() API is represented as data here;
-//!   script hooks + declarative tools carry the behaviour).
+//!   The plugin system. Handles `plugin.yaml` manifests (id kebab-case,
+//!   provides {tools, hooks, skills, prompt}, config schema with
+//!   user > env > default resolution), 3-scope discovery (local `plugins/`
+//!   → global `~/.gitagent/plugins/` → installed `.gitagent/plugins/`),
+//!   auto-install from `source` git URLs, tool-name collision detection
+//!   (whole plugin skipped on clash), and programmatic-entry stubs
+//!   (register() API is represented as data here; script hooks +
+//!   declarative tools carry the behaviour).
 //!
 //! DESIGN PATTERNS USED:
 //!   * Plugin (of course) — discovery + validation + merged contributions.

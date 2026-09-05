@@ -2,9 +2,11 @@
 //! Module: engine::observe::audit
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Append-only audit log (`.gitagent/audit.jsonl`). Ports `src/audit.ts`:
-//!   enabled by `compliance.recordkeeping.audit_logging`, records
-//!   session_start/end, tool_use, tool_result (1000-char slice), errors.
+//!   Append-only audit log (`.gitagent/audit.jsonl`). Enabled by
+//!   `compliance.recordkeeping.audit_logging`. Records session_start/end,
+//!   tool_use, tool_result (content sliced to 1000 chars), and errors —
+//!   one JSON object per line with an `at` timestamp, creating parent
+//!   dirs on demand.
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `AuditLogger` — `disabled()` / `new()` + `record_*()` methods.
@@ -20,7 +22,7 @@
 
 use std::path::PathBuf;
 
-/// Max result chars stored per audit record (TS slices to 1000).
+/// Max result chars stored per audit record (results sliced to 1000).
 pub const AUDIT_RESULT_SLICE: usize = 1000;
 
 /// Append-only audit logger (Observer of session events).
@@ -79,7 +81,7 @@ impl AuditLogger {
         self.emit(serde_json::json!({"event": "tool_use", "session_id": session_id, "tool": tool, "args": args}));
     }
 
-    /// Record a tool result (sliced to 1000 chars, like TS).
+    /// Record a tool result (content sliced to 1000 chars).
     pub fn record_tool_result(&self, session_id: &str, tool: &str, content: &str, is_error: bool) {
         let slice: String = content.chars().take(AUDIT_RESULT_SLICE).collect();
         self.emit(serde_json::json!({"event": "tool_result", "session_id": session_id, "tool": tool, "content": slice, "is_error": is_error}));

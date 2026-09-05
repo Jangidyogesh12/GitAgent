@@ -4,9 +4,8 @@
 //! WHAT THIS FILE IS FOR:
 //!   `HookGate` — adapts `pre_tool_use` script hooks to the engine's
 //!   `ToolGate` trait, so the agent loop enforces hooks with zero knowledge
-//!   of scripts (Adapter pattern). Ports `wrapToolWithHooks()` from
-//!   `src/hooks.ts`: block → Deny (message becomes the tool result),
-//!   modify → replacement args.
+//!   of scripts (Adapter pattern). Verdict mapping: block → Deny (message
+//!   becomes the tool result), modify → replacement args, allow → proceed.
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `HookGate` — `new(agent_dir, session_id, defs)`; implements ToolGate.

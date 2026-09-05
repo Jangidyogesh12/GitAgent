@@ -2,10 +2,11 @@
 //! Module: engine::learning::reinforcement
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Skill confidence math. Ports `src/learning/reinforcement.ts` EXACTLY:
-//!   success `+0.1*(1-c)`, failure `-0.2`, partial `-0.05`; flagged when
-//!   below 0.4; stats persisted in SKILL.md frontmatter (usage/success/
-//!   failure counts, negative_examples capped at 10).
+//!   Skill confidence math. Success moves confidence toward 1.0 via
+//!   `c + 0.1*(1-c)` (diminishing returns near the top), failure drops it
+//!   by 0.2, partial drops it by 0.05 (both floored at 0.0); skills below
+//!   0.4 are flagged for review. Stats persist in SKILL.md frontmatter
+//!   (usage/success/failure counts, negative_examples capped at 10).
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
 //!   * `Outcome`            — Success | Failure | Partial.
@@ -24,9 +25,9 @@
 use anyhow::Result;
 use std::path::Path;
 
-/// Confidence below which `review` flags a skill (TS: 0.4).
+/// Confidence below which `review` flags a skill (0.4).
 pub const FLAG_THRESHOLD: f64 = 0.4;
-/// Max stored negative examples per skill (TS cap: 10).
+/// Max stored negative examples per skill (cap: 10).
 pub const MAX_NEGATIVE_EXAMPLES: usize = 10;
 
 /// Task outcome driving reinforcement.
@@ -40,7 +41,7 @@ pub enum Outcome {
     Partial,
 }
 
-/// Pure confidence transition (ports the TS update rules exactly).
+/// Pure confidence transition applying the update rules.
 ///
 /// # Description
 /// success: `c + 0.1*(1-c)` (diminishing returns near 1.0); failure: `c-0.2`
@@ -149,7 +150,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn math_matches_ts_rules() {
+    fn confidence_math_follows_documented_rules() {
         assert!((adjust_confidence(0.5, Outcome::Success) - 0.55).abs() < 1e-9);
         assert!((adjust_confidence(0.5, Outcome::Failure) - 0.3).abs() < 1e-9);
         assert!((adjust_confidence(0.5, Outcome::Partial) - 0.45).abs() < 1e-9);

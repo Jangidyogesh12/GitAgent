@@ -2,13 +2,13 @@
 //! Module: engine::plugins::discover
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Plugin discovery + contributions. Ports `discoverPluginDirs()` and the
-//!   loading half of `src/plugins.ts`: scope order local → global →
-//!   installed, auto-install from `plugins.<name>.source` git URLs into
-//!   `.gitagent/plugins/` (argv-only clone, fail-soft), enabled-flag +
-//!   `${ENV}`-interpolated config resolution (user > env > default, missing
-//!   required → warning), `plugin_prompt_additions()` (`# Plugin: <name>`
-//!   sections) and `plugin_hook_configs()` (HookDefinitions with base_dir).
+//!   Plugin discovery + contributions. Scans the three scopes in order
+//!   local → global → installed, auto-installs from `plugins.<name>.source`
+//!   git URLs into `.gitagent/plugins/` (argv-only clone, fail-soft),
+//!   applies the enabled flag plus `${ENV}`-interpolated config resolution
+//!   (user > env > default, missing required → warning), and builds
+//!   `plugin_prompt_additions()` (`# Plugin: <name>` sections) plus
+//!   `plugin_hook_configs()` (HookDefinitions with base_dir set).
 //!
 //! FUNCTIONS PRESENT IN THIS FILE:
 //!   * `discover_plugins()`       — full pipeline → Vec<LoadedPlugin>.
@@ -139,11 +139,12 @@ pub fn discover_plugins(agent_dir: &Path, plugin_table: &serde_json::Value) -> V
 /// Resolve a plugin's config (user > env > default) with warnings.
 ///
 /// # Description
-/// Ports the TS config resolution: manifest `plugins.<name>.config` values
-/// (with `${ENV}` interpolation) win, then the property's `env` var
-/// (coerced to number/boolean), then `default`. Missing `required` keys
-/// warn (not fatal). Returns the resolved map (used by hosts; scripts read
-/// env themselves).
+/// Resolution order per key: manifest-declared default (with `${ENV}`
+/// interpolation) is the base, then the property's `env` var value
+/// (coerced to number/boolean when possible) overrides it, then the
+/// user-supplied `plugins.<name>.config` value (also interpolated) wins.
+/// Missing `required` keys emit a warning (not fatal). Returns the
+/// resolved map (hosts consume it; scripts read env themselves).
 ///
 /// # Example
 /// ```rust
@@ -232,9 +233,9 @@ pub fn plugin_prompt_additions(plugins: &[LoadedPlugin]) -> Vec<String> {
 /// Build per-plugin `HooksConfig`s with `base_dir` = plugin dir.
 ///
 /// # Description
-/// Ports the TS script-hook loading for plugins: each `provides.hooks`
-/// event list becomes HookDefinitions anchored at the plugin dir so the
-/// traversal guard in `hooks` confines them correctly.
+/// Each `provides.hooks` event list becomes HookDefinitions anchored at
+/// the plugin dir so the traversal guard confines each script to its own
+/// plugin directory.
 ///
 /// # Example
 /// ```rust,no_run
@@ -280,7 +281,7 @@ fn clone_shallow(url: &str, dest: &Path, version: Option<&str>) -> anyhow::Resul
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    // Argv-only git (same RCE lesson as the loader).
+    // Argv-only git invocation (no shell string interpolation).
     let mut args = vec!["clone".to_string(), "--depth".to_string(), "1".to_string()];
     if let Some(v) = version {
         args.extend(["--branch".to_string(), v.to_string()]);

@@ -2,21 +2,30 @@
 //! Module: engine::llm::spec
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Model-spec parsing + provider tables. Ports the TS `loader.ts` model
-//!   resolution: `provider:model[@base-url]` (or OpenCode-style
-//!   `provider/model`) strings, per-provider default base URLs + API-key
-//!   env vars, the `LYZR_API_KEY → OPENAI_API_KEY` remap, OpenCode Zen
-//!   support, and the context-window/cost tables.
+//!   Model-spec parsing plus provider tables. Handles `provider:model`
+//!   and `provider/model` spellings with optional `@base-url` override,
+//!   per-provider default base URLs and API-key env lookup (including the
+//!   short alias env var and the shared gateway key), plus context-window,
+//!   cost, and retryable-error tables.
 //!
 //! DESIGN PATTERNS USED:
-//!   * Factory — `resolve_model()` manufactures a ready-to-use `ModelSpec`.
+//!   * Factory — `resolve_model()` manufactures a ready `ModelSpec`.
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
-//!   * `ModelSpec`           — model_id + base_url + api_key triple.
-//!   * `resolve_model()`     — parse `provider:model[@base]` into a spec.
+//!   * `ModelSpec`           — model_id plus base_url plus api_key triple.
+//!   * `resolve_model()`     — parse a spec string into a `ModelSpec`.
 //!   * `context_window()`    — tokens of context per model family.
 //!   * `cost_per_mtok()`     — (input, output) USD per million tokens.
 //!   * `is_transient_error()`— retryable vs fatal error classifier.
+//!
+//! HOW IT WORKS:
+//!   * Colon form splits provider at the first `:`; slash form (no colon)
+//!     splits at the first `/`. A trailing `@http...` segment or the model
+//!     base URL env var overrides the default endpoint. Keys resolve from
+//!     `<PROVIDER>_API_KEY` with gateway fallbacks; empty means keyless
+//!     local endpoints. Missing separators panic (fail fast on bad config).
+//!   * Only chat-completions style endpoints are callable here; models
+//!     living on other protocols surface as clean failure messages.
 //!
 //! HOW TO USE (example):
 //! ```rust
@@ -44,23 +53,20 @@ pub struct ModelSpec {
 /// Parse `provider:model[@base-url]` into a `ModelSpec` (Factory).
 ///
 /// # Description
-/// Provider defaults mirror the TS loader + `rust/gitagent-rs` provider:
-/// `ollama:` → localhost:11434, `anthropic:` → api.anthropic.com,
-/// `opencode:` → OpenCode Zen (`https://opencode.ai/zen/v1`) and
-/// `opencode-go:` → OpenCode Go (`https://opencode.ai/zen/go/v1`), both keyed
-/// from `OPENCODE_API_KEY`, else OpenAI. Both `provider:model` (gitagent style)
-/// and `provider/model` (OpenCode style, e.g. `opencode/kimi-k2.6`) are
-/// accepted — with no `:` present, the first `/` splits provider from model.
-/// `@base-url` or `GITAGENT_MODEL_BASE_URL` overrides. API key comes from
-/// `<PROVIDER>_API_KEY` (uppercased, `-`→`_`); `lyzr` additionally accepts
-/// `LYZR_API_KEY`, `opencode*` accepts `OPENCODE_API_KEY`. Missing key →
-/// empty string (local endpoints). Panics when neither `:` nor `/` is present.
+/// Provider defaults: `ollama` maps to localhost:11434, `anthropic` to the
+/// Anthropic endpoint, `opencode` to the Zen gateway and `opencode-go` to
+/// the Go plan path, both keyed from the shared gateway key, else OpenAI.
+/// Both `provider:model` and `provider/model` spellings are accepted — with
+/// no `:` present, the first `/` splits provider from model. `@base-url`
+/// or the model base URL env var overrides. The API key comes from
+/// `<PROVIDER>_API_KEY` (uppercased, `-` mapped to `_`) with alias and
+/// gateway fallbacks. Missing key yields an empty string for local
+/// endpoints. Panics when neither `:` nor `/` is present.
 ///
-/// Zen/Go note: only the `.../chat/completions` family speaks OpenAI
-/// chat SSE (DeepSeek, Kimi, GLM, MiniMax, …). GPT/Claude/Gemini models
-/// live on `/responses`, `/messages`, `/models/…` endpoints with different
-/// protocols and are NOT callable through this client — the API error
-/// surfaces as a clean failure message.
+/// Zen/Go note: only the chat-completions family speaks OpenAI chat SSE
+/// here (DeepSeek, Kimi, GLM, MiniMax, and similar). Models living on other
+/// endpoint families with different protocols are NOT callable through this
+/// client — the API error surfaces as a clean failure message.
 ///
 /// # Example
 /// ```rust
@@ -99,8 +105,8 @@ pub fn resolve_model(spec: &str) -> ModelSpec {
         api_key = std::env::var("LYZR_API_KEY").unwrap_or_default();
     }
     if api_key.is_empty() && (provider == "opencode" || provider == "opencode-go") {
-        // `opencode-go` would otherwise map to OPENCODE_GO_API_KEY, which
-        // does not exist — both plans authenticate with OPENCODE_API_KEY.
+    // `opencode-go` would otherwise map to a suffixed key name, which
+    // does not exist — both plans authenticate with the shared key.
         api_key = std::env::var("OPENCODE_API_KEY").unwrap_or_default();
     }
     ModelSpec {
@@ -115,9 +121,9 @@ fn default_base_url(provider: &str) -> String {
     match provider {
         "ollama" => "http://localhost:11434/v1".to_string(),
         "anthropic" => "https://api.anthropic.com/v1".to_string(),
-        // OpenCode Zen gateway (OpenAI-compatible `chat/completions` family;
-        // key from OPENCODE_API_KEY via the rule below) and the Go plan,
-        // which lives under a separate `/zen/go/` path segment.
+    // OpenCode Zen gateway (OpenAI-compatible chat-completions family;
+    // key from the shared gateway key via the rule below) and the Go plan,
+    // which lives under a separate path segment.
         "opencode" => "https://opencode.ai/zen/v1".to_string(),
         "opencode-go" => "https://opencode.ai/zen/go/v1".to_string(),
         "google" | "gemini" => {
@@ -133,8 +139,8 @@ fn default_base_url(provider: &str) -> String {
 /// Context window (tokens) per model family.
 ///
 /// # Description
-/// Table ported from `rust/gitagent-rs/src/pi/provider.rs`: Gemini 1M,
-/// Claude/GPT-5/o-series 200k, GPT-4.1 1M, default 128k. Unknown → 128k.
+/// Built-in table: Gemini and GPT-4.1 class at 1M, Claude and o-series
+/// reasoning models at 200k, default 128k. Unknown names yield 128k.
 ///
 /// # Example
 /// ```rust
@@ -160,8 +166,8 @@ pub fn context_window(model_id: &str) -> usize {
 /// (input, output) USD cost per million tokens.
 ///
 /// # Description
-/// Small built-in table; unknown models → (0,0) and the caller falls back
-/// to usage-based estimation. Mirrors `model_cost_per_mtok` in the prior port.
+/// Small built-in table; unknown models yield (0,0) and the caller falls
+/// back to usage-based estimation.
 ///
 /// # Example
 /// ```rust

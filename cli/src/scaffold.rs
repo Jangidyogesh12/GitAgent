@@ -2,11 +2,24 @@
 //! Module: cli::scaffold (src/scaffold.rs)
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   First-run agent scaffolding. Ports `ensureRepo()` from `src/index.ts`:
-//!   mkdir + `git init` + `.gitignore` + initial empty commit + agent.yaml
-//!   template (default model openai:gpt-4o-mini, max_turns 50, tools
-//!   [cli, read, write, memory]) + workspace/ + memory/MEMORY.md + SOUL.md
-//!   + scaffold commit. Existing agent dirs pass through untouched.
+//!   First-run agent scaffolding: turns an empty directory into a runnable
+//!   agent repo (manifest + workspace + memory + identity files + git
+//!   history). Existing agent dirs (ones already containing `agent.yaml`)
+//!   pass through untouched.
+//!
+//! HOW IT WORKS:
+//!   * Guard: if `<dir>/agent.yaml` already exists, return `Ok` immediately
+//!     so repeated runs never clobber user files (idempotent).
+//!   * Otherwise: `create_dir_all(dir)` then best-effort `git init` (the
+//!     agent still runs without git; memory commits are just skipped).
+//!   * Writes defaults: `.gitignore` (`node_modules/`, `dist/`,
+//!     `.gitagent/`), `agent.yaml` from `AgentManifest::scaffold()` (agent
+//!     name derived from the dir name, model overridden by `--model` when
+//!     given, default tools `[cli, read, write, memory]`, `max_turns` 50),
+//!     `workspace/` + `memory/` dirs, `memory/MEMORY.md` (`# Memory`), and
+//!     `SOUL.md` (concise git-native identity prompt).
+//!   * Commits: best-effort `git add -A` + `git commit --allow-empty -m
+//!     "gitagent: scaffold agent"`; prints the scaffolded path.
 //!
 //! FUNCTIONS PRESENT IN THIS FILE:
 //!   * `ensure_repo()` — scaffold when `agent.yaml` is missing, else Ok.
@@ -23,9 +36,9 @@ use std::path::Path;
 /// Scaffold a fresh agent dir when `agent.yaml` is missing (else no-op).
 ///
 /// # Description
-/// Mirrors `ensureRepo()`: creates the dir, git-inits it, writes the
-/// template files, and commits. Idempotent — existing agents are returned
-/// as-is so repeated runs never clobber user files.
+/// Creates the dir, git-inits it, writes the template files, and commits.
+/// Idempotent — existing agents are returned as-is so repeated runs never
+/// clobber user files.
 ///
 /// # Example
 /// ```rust,no_run

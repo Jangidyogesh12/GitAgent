@@ -2,10 +2,14 @@
 //! Module: engine::loader::discover
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   File discovery for prompt sections. Ports `src/skills.ts`,
-//!   `src/knowledge.ts`, `src/workflows.ts`, `src/agents.ts` and
-//!   `src/examples.ts`: scan the agent dir, validate frontmatter/names, and
-//!   return structured records the prompt builder formats.
+//!   File discovery for prompt sections. Inputs: the agent directory path.
+//!   Steps: scan each conventional subdirectory (`skills/`, `knowledge/`,
+//!   `workflows/`, `agents/`, `examples/`), validate frontmatter and naming
+//!   rules, and return structured records. Outputs: `SkillInfo` /
+//!   `KnowledgeEntry` / `WorkflowInfo` / `AgentInfo` / example tuples that
+//!   the loader formats into prompt XML. Key invariants: every scanner is
+//!   fail-soft (missing dir, bad YAML, or invalid entry → skip, never abort);
+//!   listings are sorted by name for deterministic prompts.
 //!
 //! FUNCTIONS / TYPES PRESENT IN THIS FILE:
 //!   * `SkillInfo` + `discover_skills()`   — skills/*/SKILL.md (kebab-case).
@@ -29,8 +33,10 @@ use std::path::{Path, PathBuf};
 /// Read a file, returning "" when it does not exist.
 ///
 /// # Description
-/// Identity files (SOUL/RULES/...) are all optional in TS — this helper
-/// encodes that convention once so every caller stays two lines long.
+/// Identity files (SOUL/RULES/DUTIES/AGENTS.md) and content docs are all
+/// optional: a missing file contributes an empty section that the prompt
+/// builder skips. This helper encodes that convention once so every caller
+/// stays two lines long.
 ///
 /// # Example
 /// ```rust
@@ -42,7 +48,7 @@ pub fn read_optional(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
-/// Validate kebab-case (`skills.ts` enforces it for skill names).
+/// Validate kebab-case (required for skill directory names).
 ///
 /// # Example
 /// ```rust
@@ -87,9 +93,9 @@ struct SkillFront {
 /// Discover `skills/*/SKILL.md` (sorted by name).
 ///
 /// # Description
-/// Ports `discoverSkills()`: requires frontmatter `name` + `description`,
-/// `name == dir_name`, kebab-case. Invalid entries are SKIPPED (fail-soft),
-/// never fatal — one broken skill must not kill the session.
+/// Requires frontmatter `name` + `description` with `name == dir_name` and
+/// kebab-case. Invalid entries are SKIPPED (fail-soft), never fatal — one
+/// broken skill must not kill the session.
 ///
 /// # Example
 /// ```rust,no_run
@@ -154,9 +160,10 @@ pub struct KnowledgeEntry {
 /// Load `knowledge/index.yaml` → (inlined blocks, on-demand list).
 ///
 /// # Description
-/// Ports `formatKnowledgeForPrompt()`: `always_load` docs are read + wrapped
-/// as `<knowledge path="...">`, the rest become `<doc .../>` listings the
-/// model can fetch with the `read` tool. Missing index → ([], []).
+/// Splits index entries by `always_load`: flagged docs are read and wrapped
+/// as `<knowledge path="...">` blocks inlined in the prompt, while the rest
+/// become `<doc .../>` listings the model can fetch later with the `read`
+/// tool. Missing index or bad YAML → ([], []).
 ///
 /// # Example
 /// ```rust,no_run
@@ -205,9 +212,9 @@ pub struct WorkflowInfo {
 /// Discover `workflows/*.yaml|yml|md`.
 ///
 /// # Description
-/// Ports `src/workflows.ts`: yaml files need `name`; files with a `steps`
-/// list become triggerable "flows" (`@name` in chat), everything else is a
-/// "doc". Sorted by name; invalid files are skipped.
+/// YAML files must carry a `name`; files with a non-empty `steps` list
+/// become triggerable "flows" (invoked via `@name` in chat), everything
+/// else is a "doc". Sorted by name; invalid files are skipped.
 ///
 /// # Example
 /// ```rust,no_run
@@ -296,8 +303,10 @@ pub struct AgentInfo {
 /// Discover `agents/<name>/agent.yaml` (dir form) or `agents/<name>.md`.
 ///
 /// # Description
-/// Ports `src/agents.ts`. The prompt tells the model to delegate with
-/// `gitagent --dir {path} -p "task"` (executed through the `cli` tool).
+/// Directory entries need an `agent.yaml` with name/description; file-form
+/// entries need a `description` in frontmatter (otherwise skipped). The
+/// prompt tells the model to delegate with `gitagent --dir {path} -p "task"`
+/// (executed through the `cli` tool).
 ///
 /// # Example
 /// ```rust,no_run
@@ -370,8 +379,9 @@ pub fn discover_agents(agent_dir: &Path) -> Vec<AgentInfo> {
 /// Load `examples/*.md` as (name, content) few-shots, sorted by name.
 ///
 /// # Description
-/// Ports `src/examples.ts`: filename minus `.md` becomes
-/// `<example name="...">`. Missing dir → empty vec.
+/// Each `*.md` filename minus its extension becomes `<example name="...">`.
+/// Missing dir → empty vec; files are read whole (they are small curated
+/// few-shots, not arbitrary docs).
 ///
 /// # Example
 /// ```rust,no_run

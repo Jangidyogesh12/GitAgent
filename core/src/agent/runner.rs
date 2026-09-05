@@ -2,10 +2,11 @@
 //! Module: engine::agent::runner
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The think → act → observe loop itself (Template Method pattern). Ports
-//!   pi-agent-core's `runLoop` semantics that the TS CLI/SDK relied on:
-//!   inject steering → budget check → ask model → run tool calls → repeat
-//!   until final answer / max turns / abort.
+//!   The think-act-observe loop itself (Template Method): inject steering,
+//!   check budget, ask the model, run tool calls, repeat until a final
+//!   answer, turn limit, or abort. Tool failures and gate denials become
+//!   result data; unknown tools become error results; over-long replies use
+//!   a bounded continue nudge (max 3).
 //!
 //! DESIGN PATTERNS USED:
 //!   * Template Method — `run_loop()` is the fixed skeleton; `LoopConfig`
@@ -16,10 +17,19 @@
 //!     handle never leaks the background task (it checks the flag per turn).
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
-//!   * `LoopContext` — system_prompt + tools + transcript (per session).
-//!   * `LoopConfig`  — client + gates + compactor + budgets (per run).
-//!   * `Agent`       — stateful wrapper (transcript + Builder + prompt()).
+//!   * `LoopContext` — system_prompt plus tools plus transcript (per session).
+//!   * `LoopConfig`  — client plus gates plus compactor plus budgets (per run).
+//!   * `Agent`       — stateful wrapper (transcript plus Builder plus prompt).
 //!   * `run_loop()`  — the loop; returns the final transcript.
+//!
+//! HOW IT WORKS (turn lifecycle):
+//!   * Each turn builds a budgeted VIEW for the model while the stored
+//!     transcript stays complete. Batches run concurrently unless any tool
+//!     in the batch (or the global override) is Sequential.
+//!   * Every call passes the gate chain, then runs under a timeout so a
+//!     hung subprocess can never hang the session.
+//!   * Transcript commits happen before the event sender drops, so
+//!     follow-up turns never read stale state.
 //!
 //! HOW TO USE (example):
 //! ```rust,no_run
@@ -64,31 +74,31 @@ pub struct LoopConfig {
     pub client: Arc<dyn LlmClient>,
     /// Pre-tool-use policy chain (Chain of Responsibility).
     pub gates: Vec<Arc<dyn ToolGate>>,
-    /// Optional context budgeting (None = unbounded, tests only).
+    /// Optional context budgeting (None means unbounded, tests only).
     pub compactor: Option<Compactor>,
     /// Generation constraints from the manifest.
     pub params: GenParams,
-    /// Max think→act iterations (mirrors `runtime.max_turns`, default 50).
+    /// Max think-act iterations per run (default 50).
     pub max_turns: u32,
-    /// Per-tool timeout (mirrors cli 120s default; here applied to all).
+    /// Per-tool timeout (default 120s; applies to every tool).
     pub tool_timeout: Duration,
     /// Whole-batch concurrency override (Sequential forces serial batches).
     pub tool_execution: ExecutionMode,
 }
 
-/// Run think → act → observe until stop. Returns the final transcript.
+/// Run think-act-observe until stop. Returns the final transcript.
 ///
 /// # Description
 /// The fixed skeleton (Template Method):
-/// 1. push the user message, emit `AgentStart`;
-/// 2. each turn: abort? → turns exhausted? → compact view → `complete()`
-///    → append assistant turn → `MessageEnd`;
-/// 3. no tool calls → done (`AgentEnd`); `Length` → bounded continue nudge
-///    (max 3, like the `rust/gitagent-rs` port); `Error/Aborted` → stop;
+/// 1. push the user message, emit start events;
+/// 2. each turn: abort check, turn-limit check, budgeted view, model call,
+///    append assistant turn, emit message events;
+/// 3. no tool calls means done; Length gets a bounded continue nudge
+///    (max 3); Error/Aborted stops;
 /// 4. else run the batch (concurrent unless any tool is Sequential),
-///    feeding each result back as a `ToolResult` message.
+///    feeding each result back as a result message.
 ///
-/// Tool failures and gate denials become *result data*, never Rust errors.
+/// Tool failures and gate denials become result data, never Rust errors.
 ///
 /// # Example
 /// ```rust,no_run
@@ -162,8 +172,8 @@ pub async fn run_loop(
             StopReason::Error | StopReason::Aborted => break,
             StopReason::Stop => break,
             StopReason::Length => {
-                // Bounded auto-continue (the TS loop relied on the model;
-                // here we make the bound explicit: 3 nudges max).
+                // Bounded auto-continue: nudge the model to resume without
+                // repeating finished content (3 nudges max).
                 length_nudges += 1;
                 if length_nudges > 3 {
                     break;
@@ -180,7 +190,7 @@ pub async fn run_loop(
         if calls.is_empty() {
             break; // Model stopped with ToolUse reason but no calls: be safe.
         }
-        // Unknown tools become error results (fail-soft, like TS MCP manager).
+        // Unknown tools become error results (fail-soft by design).
         let batch_sequential = cfg.tool_execution == ExecutionMode::Sequential
             || calls.iter().any(|(_, name, _)| {
                 ctx.tools
@@ -190,7 +200,7 @@ pub async fn run_loop(
                     .unwrap_or(false)
             });
 
-        // Preflight announcements (TS parallel path did the same).
+        // Preflight announcements for every pending call.
         for (id, name, args) in &calls {
             let _ = tx.send(AgentEvent::ToolExecutionStart {
                 tool_call_id: id.clone(),
@@ -279,7 +289,7 @@ async fn run_one(
             }
         }
     }
-    // 2. Unknown tool → error result (fail-soft, mirrors TS behaviour).
+    // 2. Unknown tool becomes an error result (fail-soft by design).
     let Some(tool) = ctx.tools.iter().find(|t| t.name() == name) else {
         let content = format!("Error: unknown tool \"{name}\"");
         let _ = tx.send(AgentEvent::ToolExecutionEnd {
@@ -336,7 +346,7 @@ pub struct Agent {
 }
 
 impl Agent {
-    /// Create an agent with TS-matching defaults (50 max turns).
+    /// Create an agent with default budgets (50 max turns).
     ///
     /// # Example
     /// ```rust
@@ -414,8 +424,8 @@ impl Agent {
     /// # Description
     /// Spawns the loop in the background (Observer). The caller drains the
     /// receiver; when it closes, the turn is over. The transcript is
-    /// committed BEFORE the sender is dropped so follow-ups never read stale
-    /// state (lesson ported from `rust/gitagent-rs/src/pi/agent.rs`).
+    /// committed BEFORE the sender is dropped so follow-ups never read
+    /// stale state.
     ///
     /// # Example
     /// ```rust,no_run

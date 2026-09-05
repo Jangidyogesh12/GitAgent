@@ -2,15 +2,20 @@
 //! Module: engine::manifest::types
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The full `agent.yaml` manifest type + loading/saving. Ports the
-//!   `AgentManifest` interface from `src/loader.ts` (study.md §2.11):
-//!   identity, model, tools, skills allowlist, runtime, extends,
-//!   dependencies, delegation, compliance, plugins, mcp_servers.
+//!   The full `agent.yaml` manifest type plus loading/saving. Inputs: an
+//!   `agent.yaml` file path (YAML text). Steps: parse into `AgentManifest`
+//!   (identity, model, tools, skills allowlist, runtime, extends,
+//!   dependencies, delegation, compliance, plugins, mcp_servers) with
+//!   serde defaults so old files stay compatible; `save_manifest()` writes
+//!   it back. Outputs: typed `AgentManifest` / YAML file. Key invariants:
+//!   unknown runtime/delegation/compliance/plugins tables stay free-form
+//!   JSON values for forwards-compatibility; `model_spec()` precedence is
+//!   CLI flag first, then manifest preferred, then fallbacks.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Builder — `AgentManifest::scaffold()` builds the default first-run
 //!     manifest (model `openai:gpt-4o-mini`, max_turns 50, tools
-//!     [cli, read, write, memory]) mirroring `ensureRepo()`.
+//!     [cli, read, write, memory]) used for empty-dir scaffolding.
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
 //!   * `Dependency`      — {name, source, version, mount} git dependency.
@@ -77,7 +82,7 @@ pub struct AgentManifest {
     /// Model selection + constraints.
     #[serde(default)]
     pub model: ModelConfig,
-    /// Tool name list (informational/for inheritance union in TS).
+    /// Tool name list (informational; also used to union inherited tools).
     #[serde(default)]
     pub tools: Vec<String>,
     /// Allowlist filter on discovered skills (absent = all skills).
@@ -111,9 +116,9 @@ impl AgentManifest {
     /// Build the default first-run manifest (Builder pattern).
     ///
     /// # Description
-    /// Mirrors the `ensureRepo()` template in `src/index.ts`: model
-    /// `openai:gpt-4o-mini`, `max_turns: 50`, tools `[cli, read, write,
-    /// memory]`. Used by `gitagent --dir <empty>` scaffolding and tests.
+    /// Returns the empty-dir template: model `openai:gpt-4o-mini`,
+    /// `max_turns: 50`, tools `[cli, read, write, memory]`. Used by
+    /// `gitagent --dir <empty>` scaffolding and tests.
     ///
     /// # Example
     /// ```rust
@@ -175,9 +180,10 @@ impl AgentManifest {
     /// Ordered model specs: CLI flag > manifest preferred, then fallbacks.
     ///
     /// # Description
-    /// Mirrors the TS precedence `envConfig.model_override > --model flag >
-    /// manifest.model.preferred`. Empty preferred + no flag → empty vec and
-    /// the caller reports "no model configured" (fail-fast, like TS).
+    /// Precedence: explicit `--model` flag first, else manifest
+    /// `model.preferred`, then every `model.fallback` entry in order. Empty
+    /// preferred + no flag → empty vec, and the caller reports "no model
+    /// configured" as a fail-fast error.
     ///
     /// # Example
     /// ```rust
@@ -202,8 +208,8 @@ impl AgentManifest {
 /// Read + YAML-parse `agent.yaml`.
 ///
 /// # Description
-/// Fails with the file path in context (the CLI turns this into exit 1 with
-/// a hint, like TS `loadAgent` errors).
+/// Fails with the file path in context; the CLI turns this into exit 1
+/// with a hint pointing at the offending file.
 ///
 /// # Example
 /// ```rust,no_run

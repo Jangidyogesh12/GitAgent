@@ -2,11 +2,12 @@
 //! Module: engine::hooks::exec
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Hook execution. Ports `executeHook` + `runHooks` from `src/hooks.ts`:
-//!   spawn `sh <script>` with the JSON payload on stdin, 10s timeout,
-//!   stdout parsed as `{action, reason?, args?}` (empty/unparseable → allow),
-//!   path-traversal guard, EPIPE swallowed, non-zero exit → Err (fail-OPEN
-//!   upstream), sequential run with first block/modify winning.
+//!   Hook execution. Spawns `sh <script>` with the JSON payload on stdin,
+//!   enforces a 10s timeout, parses stdout as
+//!   `{action, reason?, args?}` (empty/unparseable → allow), rejects
+//!   scripts that escape their base dir, swallows EPIPE on stdin, treats
+//!   non-zero exit as allow (fail-open), and runs lists sequentially with
+//!   first block/modify winning.
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
 //!   * `HookVerdict`   — Allow | Block(reason) | Modify(new_args).
@@ -30,7 +31,7 @@ use std::time::Duration;
 
 use crate::hooks::config::HookDefinition;
 
-/// Timeout for hook scripts (TS hard-codes 10s).
+/// Timeout for hook scripts (fixed 10s per script invocation).
 pub const HOOK_TIMEOUT_SECS: u64 = 10;
 
 /// Verdict of one hook / a hook chain.
@@ -110,8 +111,8 @@ impl HookInput {
 /// definition's own `base_dir` is empty), rejects `../` escapes + absolute
 /// escapes, spawns `sh`, writes payload JSON to stdin (EPIPE swallowed),
 /// waits ≤10s, parses stdout JSON `{action, reason, args}`. ANY error
-/// (spawn, timeout, non-zero exit, bad JSON) → `Allow` + stderr note — the
-/// TS rule "hook errors never block".
+/// (spawn, timeout, non-zero exit, bad JSON) → `Allow` + stderr note —
+/// the rule is "hook errors never block the session".
 ///
 /// # Example
 /// ```rust,no_run
@@ -167,7 +168,7 @@ pub async fn execute_hook(
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
         let payload = serde_json::to_string(&input.to_json()).unwrap_or_else(|_| "{}".into());
-        // EPIPE (hook ignores stdin) is swallowed — TS rule.
+        // EPIPE (hook ignores stdin) is swallowed by design.
         let _ = stdin.write_all(payload.as_bytes()).await;
     }
     let out = tokio::time::timeout(

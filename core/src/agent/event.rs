@@ -35,8 +35,8 @@ pub enum DeltaKind {
 /// Lifecycle events emitted by `run_loop()` (Observer pattern).
 ///
 /// # Description
-/// Mirrors the pi-agent-core event vocabulary that `src/index.ts`
-/// (`handleEvent`) and `src/sdk.ts` (GCMessage mapping) consume in TS.
+/// Fixed event vocabulary consumed by the CLI renderer and the SDK message
+/// mapper: streaming deltas, tool start/end, turn boundaries.
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
     /// Session started (carries nothing; CLI prints the banner instead).

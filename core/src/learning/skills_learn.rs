@@ -3,12 +3,12 @@
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
 //!   The `skill_learner` tool — turn finished tasks into reusable skills.
-//!   Ports `src/tools/skill-learner.ts`: `evaluate` (4-check worthiness
-//!   heuristic), `crystallize` (success-gated SKILL.md writer + git commit),
-//!   `status` (list learned skills), `review` (confidence < 0.4), `update`
-//!   (replace instructions), `delete` (remove skill dir).
+//!   `evaluate` runs the 4-check worthiness heuristic, `crystallize`
+//!   writes a success-gated SKILL.md plus a git commit, `status` lists
+//!   learned skills, `review` flags confidence < 0.4, `update` replaces
+//!   instructions, `delete` removes the skill dir.
 //!
-//! WORTHINESS HEURISTIC (ports TS exactly):
+//! WORTHINESS HEURISTIC:
 //!   multi_step (≥3 steps) · non_trivial (≥2 steps) · novel (no existing
 //!   skill description with Jaccard > 0.5) · generalizable (<30% of steps
 //!   match project-specific patterns: absolute paths, UUIDs, 3+-part
@@ -68,7 +68,7 @@ impl SkillLearner {
 ///
 /// # Description
 /// Same keywordisation as `match_skills` (lowercase, >2 chars); similarity
-/// = |A∩B| / |A∪B|. TS flags "not novel" when > 0.5.
+/// = |A∩B| / |A∪B|. Tasks count as "not novel" when similarity > 0.5.
 ///
 /// # Example
 /// ```rust
@@ -100,8 +100,8 @@ pub fn jaccard(a: &str, b: &str) -> f64 {
 /// Evaluate worthiness: (worthy, multi_step, non_trivial, novel, generalizable).
 ///
 /// # Description
-/// Pure function port of the TS `evaluate` heuristic. `existing_descs` are
-/// the current skill descriptions (novelty compares against each).
+/// Pure function implementing the `evaluate` heuristic. `existing_descs`
+/// are the current skill descriptions (novelty compares against each).
 ///
 /// # Example
 /// ```rust
@@ -209,7 +209,7 @@ impl AgentTool for SkillLearner {
                 let Some(task) = self.load_task(tid) else {
                     return Ok(ToolOutput::err("Error: unknown task_id"));
                 };
-                // Success-gated (TS rule): only succeeded tasks crystallise.
+                // Success-gated: only succeeded tasks crystallise.
                 if task.status != crate::learning::tasks::TaskStatus::Succeeded {
                     return Ok(ToolOutput::err(
                         "Error: only tasks with outcome success can be crystallized",

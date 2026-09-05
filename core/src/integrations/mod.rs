@@ -1,21 +1,27 @@
 //! ============================================================================
 //! Crate: integrations
 //! ----------------------------------------------------------------------------
-//! WHAT THIS CRATE IS FOR:
-//!   Harness interop adapters — first-class support for **OpenCode** alongside
-//!   the NanoBot / OpenClaw / Claude Code / Lyzr adapters. The TypeScript
-//!   original only really integrated Lyzr (as a model backend) and merely
-//!   *mentioned* Claude Code (design patterns); NanoBot/OpenClaw/OpenCode
-//!   had zero support. This crate closes that gap BOTH ways:
+//! WHAT THIS FILE IS FOR:
+//!   Harness interop adapters — first-class support for OpenCode alongside
+//!   the NanoBot / OpenClaw / Claude Code / Lyzr adapters, in both
+//!   directions:
 //!     (a) EXPORT: render a gitagent agent dir into each harness's native
 //!         config format (`opencode.json`, `nanobot.yaml`, `openclaw.json`,
 //!         `CLAUDE.md` + settings, `.env.lyzr`);
 //!     (b) MODEL: accept each harness's model strings / env vars when
 //!         resolving `--model` (Lyzr `lyzr:id@base`, OpenCode providers...).
 //!
-//!   All mappings are BEST-EFFORT (each harness evolves independently) and
-//!   every adapter documents exactly what it maps. Nothing here is
-//!   authoritative for the harness itself.
+//! HOW IT WORKS:
+//!   * Each harness implements `HarnessAdapter`: translate the gitagent
+//!     inputs (manifest name + assembled system prompt + tool list + model
+//!     string + skill names + MCP servers) into native files written under
+//!     the chosen output dir, and report the written relative paths.
+//!   * `export_for()` is the Facade callers use: pick the adapter via
+//!     `adapter_for(Harness)`, render, and write. `detect_available()`
+//!     probes env vars / binaries to list which harnesses look usable here.
+//!   * All mappings are BEST-EFFORT (each harness evolves independently) and
+//!     every adapter documents exactly what it maps. Nothing here is
+//!     authoritative for the harness itself.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Adapter — each harness gets a `HarnessAdapter` impl translating

@@ -101,8 +101,8 @@ impl ToolOutput {
 ///
 /// # Description
 /// Implementors are the agent's "hands". The default `execution_mode()` is
-/// `Parallel`; mutating tools MUST override it to `Sequential` (mirrors
-/// `src/tools/index.ts` marking cli/write/edit/memory/... sequential).
+/// `Parallel`; mutating tools MUST override it to `Sequential` (file / process
+/// / git mutation is never safe to run concurrently).
 #[async_trait]
 pub trait AgentTool: Send + Sync {
     /// Registry name (e.g. `"cli"`; MCP tools use `"server__tool"`).

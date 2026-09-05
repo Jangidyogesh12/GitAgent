@@ -2,9 +2,8 @@
 //! Module: engine::agent
 //! ----------------------------------------------------------------------------
 //! WHAT THIS MODULE IS FOR:
-//!   The LLM-agnostic agent engine — a faithful Rust port of the
-//!   `@mariozechner/pi-agent-core` loop that the TypeScript GitAgent builds on
-//!   (see study.md §2 "the agent loop"). NOTHING here knows about OpenAI,
+//!   The LLM-agnostic agent engine — the think → act → observe loop.
+//!   (see the agent-loop design notes §2). NOTHING here knows about OpenAI,
 //!   Anthropic, files, or git; those live in sibling modules. This module only
 //!   defines the conversation model, the tool/gate seams, and the
 //!   think → act → observe loop.

@@ -2,13 +2,25 @@
 //! Module: sdk::permissions
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Claude-Code-style permission gate. Ports the DESIGN (not the protocol)
-//!   of Claude Code's permissions plus `rust/gitagent-rs/.../permissions.rs`:
-//!   modes Default | Plan | AcceptEdits | Bypass, and ordered rules
-//!   `allow|deny:tool` or `allow|deny:tool(substring)` with `*` wildcards,
-//!   matched against the `command`/`path`/`prompt` arg field else the whole
-//!   JSON. Precedence: Bypass short-circuit → deny → allow → mode default;
-//!   Plan blocks mutating tools (anything Sequential except read).
+//!   Tool-execution permission gate: decides allow vs deny for every tool
+//!   call before it runs, from a mode plus an ordered allow/deny rule list.
+//!
+//! HOW IT WORKS:
+//!   * Modes: `Default` (reads allowed, writes need explicit allow unless
+//!     denied), `Plan` (read-only — any mutating tool, i.e. anything except
+//!     `read`, is denied), `AcceptEdits` (reads + file writes auto-allowed
+//!     unless denied), `Bypass` (allow everything except explicit denies).
+//!   * Rules parse as `allow:tool`, `deny:tool`, `allow:tool(substring)`,
+//!     `deny:tool(substring)`, or bare `tool` (allow shorthand); tool names
+//!     support `*` wildcards. A substring rule matches against the most
+//!     relevant arg field (`command` → `path` → `prompt`, else the whole
+//!     args JSON).
+//!   * Precedence per call: explicit `deny` rules first (even in Bypass —
+//!     explicit beats blanket) → Bypass short-circuit allow → explicit
+//!     `allow` rules → mode default (Plan blocks mutating tools, every other
+//!     mode allows). Bad rule strings warn and are skipped at construction.
+//!   * Wiring: `PermissionGate` implements the `ToolGate` seam and is
+//!     attached first in the gate chain, ahead of script hook gates.
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `PermissionMode` — Default | Plan | AcceptEdits | Bypass.
@@ -23,7 +35,7 @@
 
 use engine::agent::{GateDecision, ToolGate};
 
-/// Policy mode (mirrors Claude Code's modes).
+/// Policy mode controlling which tools need explicit allow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PermissionMode {
     /// Ask-equivalent: allow reads, allow listed, deny listed (default).
@@ -46,7 +58,7 @@ pub struct Rule {
     substr: Option<String>,
 }
 
-/// Claude-Code-style permission gate (Chain of Responsibility link).
+/// Permission gate (Chain of Responsibility link).
 pub struct PermissionGate {
     /// Active mode.
     pub mode: PermissionMode,

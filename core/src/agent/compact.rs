@@ -2,20 +2,28 @@
 //! Module: engine::agent::compact
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Context-window budgeting. Ports `src/compact.ts` (token estimation,
-//!   `needsCompaction` > 75% rule, tool-result truncation) AND fixes its
-//!   biggest flaw: in TS `compact.ts` exported helpers but nothing called
-//!   them in the loop. Here the `Compactor` is a first-class loop seam
-//!   (`LoopConfig.compactor`), applied to the messages SENT to the model.
+//!   Context-window budgeting for the agent loop. Estimates transcript
+//!   tokens with a cheap char heuristic, flags transcripts past 75% of the
+//!   window, and rewrites oversized tool results in place for the model
+//!   view while the stored transcript stays complete. The `Compactor` is a
+//!   first-class loop seam applied to messages SENT to the model.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Strategy — the loop calls `compact()` polymorphically; this file is
-//!     the default "truncate middle of oversized tool results" strategy
-//!     (LLM-summarisation lives one layer up, in the SDK, like TS).
+//!     the default head-plus-tail truncation strategy (model summarisation
+//!     lives one layer up).
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
 //!   * `Compactor` — `new(context_window)`; `needs_compaction()`;
 //!     `compact()`; `estimate()`.
+//!
+//! HOW IT WORKS:
+//!   * Budget is 75% of the window; per-tool-result cap is 10_000 chars,
+//!     split evenly across head and tail with a char-count marker.
+//!   * Messages are never dropped: dropping a result would orphan its call
+//!     and providers would reject the turn, so only content shrinks.
+//!   * Token math is `ceil(chars/4)` plus a per-tool-call constant to
+//!     account for call envelope overhead.
 //!
 //! HOW TO USE (example):
 //! ```rust
@@ -28,20 +36,20 @@
 
 use crate::agent::message::AgentMessage;
 
-/// Budgets the context window (default 200k like `compact.ts`).
+/// Budgets the context window (default budget 75% of window).
 ///
 /// # Description
-/// `budget = 75% of window` mirrors the TS `needsCompaction` ratio (0.75).
-/// `compact()` never DROPS a message — it truncates oversized tool-result
-/// contents in place, because dropping a ToolResult orphans its ToolCall and
-/// providers answer 400 (the pairing invariant from `rust/gitagent-rs`).
+/// Usable budget is 75% of the window so headroom remains for the reply.
+/// `compact()` never drops a message — it truncates oversized tool-result
+/// contents in place, because dropping a result orphans its call and
+/// providers reject the turn.
 #[derive(Debug, Clone)]
 pub struct Compactor {
     /// Full context window of the model.
     pub context_window: usize,
     /// Usable budget = 75% of the window.
     pub budget: usize,
-    /// Per-tool-result truncation cap (mirrors the TS 10k rule).
+    /// Per-tool-result truncation cap (10k chars, head plus tail kept).
     pub tool_result_cap: usize,
 }
 
@@ -62,7 +70,7 @@ impl Compactor {
         }
     }
 
-    /// Rough token estimate (`chars/4`, same heuristic as TS `compact.ts`).
+    /// Rough token estimate (`chars/4` rounded up).
     ///
     /// # Example
     /// ```rust

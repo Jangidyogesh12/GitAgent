@@ -2,13 +2,20 @@
 //! Module: engine::helpers::frontmatter
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Parse `---\n<yaml>\n---\n<body>` markdown files (SKILL.md, workflows,
-//!   sub-agent `.md` files). Ports the frontmatter handling in `src/skills.ts`
-//!   and `src/workflows.ts`.
+//!   Parse `---`-fenced markdown files (skill docs, workflows, sub-agent
+//!   definitions) into a YAML metadata block plus a body string. Only the
+//!   first fence pair is consumed; files without a leading fence return no
+//!   metadata and the whole text as body.
 //!
 //! FUNCTIONS PRESENT IN THIS FILE:
 //!   * `split_frontmatter()` — split raw text into (yaml, body).
-//!   * `parse_frontmatter()`  — split + deserialise the yaml into `T`.
+//!   * `parse_frontmatter()`  — split plus deserialise the yaml into `T`.
+//!
+//! HOW IT WORKS:
+//!   * Line scan: first line must trim to `---`; collects until the next
+//!     fence line, then joins the remainder as body. Unterminated fences
+//!     fall back to no-metadata. Typed parsing errors on missing blocks or
+//!     invalid YAML; callers accepting fence-less files use the splitter.
 //!
 //! HOW TO USE (example):
 //! ```rust

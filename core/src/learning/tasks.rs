@@ -2,12 +2,13 @@
 //! Module: engine::learning::tasks
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The `task_tracker` tool — multi-step task lifecycle. Ports
-//!   `src/tools/task-tracker.ts`: store at `.gitagent/learning/tasks.json`,
-//!   begin (resume matching active task with attempts++, else create with
-//!   attempts = prior failures + 1 + list prior failure reasons), update,
-//!   end (status transition + reinforcement on `skill_used`), list, and
-//!   keyword-overlap skill matching (> 0.1, words > 2 chars).
+//!   The `task_tracker` tool — multi-step task lifecycle. Store lives at
+//!   `.gitagent/learning/tasks.json`. `begin` resumes a matching active
+//!   task (attempts++) or creates one (attempts = prior failures + 1 plus
+//!   a list of prior failure reasons); `update` appends steps; `end`
+//!   applies the status transition and reinforces `skill_used`; `list`
+//!   shows active tasks. Skill suggestions come from a keyword-overlap
+//!   matcher (score > 0.1, words > 2 chars).
 //!
 //! DESIGN PATTERNS USED:
 //!   * State — TaskStatus active → succeeded|failed; illegal transitions Err.
@@ -46,7 +47,7 @@ pub enum TaskStatus {
     Failed,
 }
 
-/// One stored task (mirrors the TS TaskRecord shape).
+/// One stored task with lifecycle state, step log, and outcome.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskRecord {
     /// UUID.
@@ -85,9 +86,9 @@ fn one() -> u32 {
 /// Keyword-overlap skill matcher (pure function).
 ///
 /// # Description
-/// Ports the TS local matcher: lowercase, strip non `[a-z0-9\s-]`, words >
-/// 2 chars, score = overlap / max(lenA, lenB) > 0.1. Returns matching skill
-/// names in registry order.
+/// Lowercases, strips non `[a-z0-9\s-]`, keeps words > 2 chars, then
+/// scores overlap / max(lenA, lenB) > 0.1. Returns matching skill names
+/// in registry order.
 ///
 /// # Example
 /// ```rust

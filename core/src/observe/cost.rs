@@ -2,8 +2,10 @@
 //! Module: engine::observe::cost
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Per-model token/USD accumulation across a session. Ports
-//!   `src/cost-tracker.ts` ("mirrors Claude Code's cost-tracker pattern").
+//!   Per-model token/USD accumulation across a session. `add()` folds one
+//!   turn's input/output tokens and USD cost into the per-model bucket;
+//!   `total_usd()` sums all buckets and `summary()` renders the CLI usage
+//!   lines plus a total.
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `ModelCost`    — one model's {input, output, usd}.
@@ -31,7 +33,7 @@ pub struct ModelCost {
     pub usd: f64,
 }
 
-/// Session-wide cost accumulator (mirrors Claude Code's tracker).
+/// Session-wide cost accumulator keyed by model name.
 #[derive(Debug, Clone, Default)]
 pub struct CostTracker {
     per_model: HashMap<String, ModelCost>,

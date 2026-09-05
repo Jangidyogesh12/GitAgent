@@ -2,10 +2,10 @@
 //! Module: engine::llm::fallback
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Resilient completion driver: try preferred spec, retry transient errors
-//!   with exponential backoff, then fail over to fallbacks. Ports the TS
-//!   `model.fallback[]` handling plus the `stream_assistant_resilient`
-//!   behaviour from `rust/gitagent-rs/src/pi/provider.rs`.
+//!   Resilient completion driver: try the preferred spec, retry transient
+//!   errors with exponential backoff, then fail over to fallback specs in
+//!   order. Single attempts stream chat-completions SSE into text, thinking,
+//!   tool-call, and usage accumulators until the done marker.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Chain of Responsibility — specs tried in order; first success wins.
@@ -14,6 +14,15 @@
 //! FUNCTIONS PRESENT IN THIS FILE:
 //!   * `complete_with_fallback()` — resilient driver (errors as VALUES).
 //!   * `stream_once()`             — one SSE attempt against one spec.
+//!
+//! HOW IT WORKS:
+//!   * Backoff is 400ms times 2^attempt, shift capped at 5. Fatal errors
+//!     (auth, bad request) skip retries and move to the next spec.
+//!   * Tool-less endpoints degrade gracefully: when the endpoint rejects
+//!     the `tools` field, the driver retries once without tools.
+//!   * SSE folding buffers partial lines, skips non-data lines, merges
+//!     indexed tool deltas, then recovers text-form tool calls for small
+//!     local models that emit calls as prose.
 //!
 //! HOW TO USE (example):
 //! ```rust,no_run
@@ -37,10 +46,10 @@ use crate::llm::spec::{is_transient_error, ModelSpec};
 /// Try each spec in order, retrying transient errors (errors as VALUES).
 ///
 /// # Description
-/// Never returns `Err`: total failure yields `AssistantMessage::failure(..)`
-/// so the engine stops cleanly instead of tearing down the session (the TS
-/// lesson: "transient errors happen pre-stream, so retries don't duplicate
-/// visible output"). Backoff: 400ms × 2^attempt, capped at attempt 5.
+/// Never returns `Err`: total failure yields an error assistant message so
+/// the engine stops cleanly instead of tearing down the session. Retries
+/// happen pre-stream, so they never duplicate visible output. Backoff is
+/// 400ms times 2^attempt, capped at shift 5.
 ///
 /// # Example
 /// ```rust,no_run
@@ -136,9 +145,8 @@ async fn stream_once(
     if !spec.api_key.is_empty() {
         req = req.bearer_auth(&spec.api_key);
     }
-    // OpenCode's Go docs ask third-party clients to send a stable session
-    // header (prompt-cache optimization + abuse monitoring), so Go accounts
-    // don't get flagged for unidentified traffic.
+    // Gateway accounts expect a stable session header (cache plus abuse
+    // monitoring), so gateway traffic carries an identifier.
     if spec.base_url.contains("opencode.ai") {
         req = req.header("x-opencode-session", session_key);
     }

@@ -3,15 +3,28 @@
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
 //!   `load_agent()` — the Facade that turns an agent directory into a
-//!   `LoadedAgent`. Ports `loadAgent()` from `src/loader.ts`: manifest →
-//!   `.gitagent/` setup → session state → extends/dependencies (argv-only git
-//!   clones, NEVER a shell — the TS `extends: "$(cmd)"` RCE lesson) →
-//!   identity files → prompt assembly (TS section order) → model specs.
+//!   `LoadedAgent` (parsed manifest + assembled system prompt + session id +
+//!   ordered model specs). Inputs: agent dir path, optional `--model` flag,
+//!   optional session-id override. Steps: read `agent.yaml` → create
+//!   `.gitagent/` + `state.json` → shallow-clone `extends` parent and each
+//!   `dependencies[]` entry (argv-only git, fail-soft) → read identity files
+//!   (SOUL/RULES/DUTIES/AGENTS.md) → load knowledge, skills, workflows,
+//!   sub-agents, examples, plugins → join prompt sections in fixed order →
+//!   resolve model specs. Outputs: `LoadedAgent` or a contextual error.
+//!   Key invariants: clone failures never abort the load (warn + continue);
+//!   empty manifest model with no flag is a hard error ("no model
+//!   configured"); empty prompt sections are skipped.
 //!
-//! SECURITY NOTE (ported lesson):
-//!   `clone_git_repo()` uses argv-array `git` (no shell), so a malicious
-//!   `extends: "$(evil)"` is treated as a literal URL and fails to clone
-//!   instead of executing.
+//! SECURITY NOTE:
+//!   `clone_git_repo()` invokes `git` via an argv array with no shell, so a
+//!   malicious `extends` value such as `$(evil)` is passed as a literal URL
+//!   and simply fails to clone instead of executing.
+//!
+//! HOW IT WORKS (pipeline order):
+//!   1. manifest 2. `.gitagent/` dir + gitignore 3. session id + state.json
+//!   4. parent RULES.md 5. dependency clones 6. identity files 7. knowledge
+//!   8. skills (allowlist-filtered) 9. workflows 10. sub-agents 11. examples
+//!   12. plugin additions 13. workspace + learning blocks 14. model specs.
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
 //!   * `LoadedAgent`      — manifest + system_prompt + dir + session_id +
@@ -62,12 +75,13 @@ pub struct LoadedAgent {
 /// Load + assemble an agent directory (Facade over the whole pipeline).
 ///
 /// # Description
-/// Mirrors `loadAgent(agentDir, modelFlag?, envFlag?, sessionIdOverride?)`
-/// minus env-config merging (handled by `manifest` runtime table +
-/// the SDK layer). Steps: manifest → `.gitagent/` → state → extends →
-/// dependencies → identity files → knowledge/skills/workflows/agents/
-/// examples → plugin discovery + `# Plugin:` prompt additions → compliance →
-/// workspace → learning. Clone failures are NON-fatal (warn + continue).
+/// Takes `(agent_dir, model_flag?, session_override?)`; env-based model
+/// overrides are handled by the manifest `runtime` table + the SDK layer.
+/// Steps: manifest → `.gitagent/` → state → extends → dependencies →
+/// identity files → knowledge/skills/workflows/agents/examples → plugin
+/// discovery + `# Plugin:` prompt additions → workspace → learning. Each
+/// git clone is fail-soft: a failure is skipped so one bad URL cannot
+/// abort the session.
 ///
 /// # Example
 /// ```rust,no_run
@@ -88,7 +102,9 @@ pub fn load_agent(
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     write_session_state(agent_dir, &session_id)?;
 
-    // extends: shallow clone parent into .gitagent/deps/<name> (fail-soft).
+    // extends: shallow-clone the parent agent into .gitagent/deps/<name>.
+    // Fail-soft: if the clone fails, parent_rules stays empty and loading
+    // continues with local files only.
     let mut parent_rules = String::new();
     if let Some(url) = manifest.extends.clone() {
         let dest = agent_dir.join(".gitagent/deps/parent");
@@ -96,7 +112,9 @@ pub fn load_agent(
             parent_rules = read_optional(&dest.join("RULES.md"));
         }
     }
-    // dependencies: same treatment per entry (fail-soft each).
+    // dependencies: clone each entry into its own .gitagent/deps/<name>
+    // dir, checking out `version` as branch when set. Each clone is
+    // independent and fail-soft.
     for dep in &manifest.dependencies {
         let dest = agent_dir.join(format!(".gitagent/deps/{}", dep.name));
         let branch = if dep.version.is_empty() {
@@ -203,10 +221,11 @@ pub fn load_agent(
         || std::env::var("RENDER").is_ok()
         || std::env::var("FLY_APP_NAME").is_ok();
 
-    // Plugins: discover (auto-installs from `source` URLs, fail-soft) and
-    // collect `# Plugin: <name>` prompt additions in manifest position
-    // (after examples — the TS section order). Tool contributions are wired
-    // separately by the SDK layer, which reuses this same discovery.
+    // Plugins: discover plugin dirs (auto-cloning `source` URLs, fail-soft)
+    // and collect each `# Plugin: <name>` prompt addition. Plugin sections
+    // are appended in manifest position (after examples) to keep the fixed
+    // section order. Tool contributions are wired separately by the SDK
+    // layer, which reuses this same discovery.
     let found_plugins = crate::plugins::discover_plugins(agent_dir, &manifest.plugins);
     let plugin_sections = crate::plugins::plugin_prompt_additions(&found_plugins);
 
@@ -249,9 +268,10 @@ pub fn load_agent(
 /// Shallow-clone a git repo with argv-only `git` (NO shell).
 ///
 /// # Description
-/// `git clone --depth 1 [--branch b] <url> <dest>`. Skips when `dest`
-/// already exists. SECURITY: argv array means `extends: "$(cmd)"` can never
-/// execute — it just fails to clone (fail-soft upstream).
+/// Runs `git clone --depth 1 [--branch b] <url> <dest>`. Returns early when
+/// `dest` already exists. SECURITY: arguments are passed as an argv array
+/// with no shell, so metacharacters such as `$(...)` in the URL can never
+/// execute — the clone just fails, and callers treat that as skippable.
 ///
 /// # Example
 /// ```rust,no_run
@@ -345,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn assembles_prompt_in_ts_order() {
+    fn assembles_prompt_in_canonical_order() {
         let d = scaffold_dir("order");
         let a = load_agent(&d, None, Some("s1")).unwrap();
         assert_eq!(a.session_id, "s1");

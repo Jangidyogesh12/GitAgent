@@ -3,12 +3,11 @@
 //! ----------------------------------------------------------------------------
 //! WHAT THIS CRATE IS FOR:
 //!   Observability: cost tracking, audit logging, chat history, telemetry.
-//!   Ports `src/cost-tracker.ts` (per-model token/USD accumulator),
-//!   `src/audit.ts` (`.gitagent/audit.jsonl`, 1000-char result slices),
-//!   `src/chat-history.ts` (per-branch JSONL + summarise trigger), and
-//!   `src/telemetry.ts` (here: JSONL event sink gated by
-//!   `GITAGENT_TELEMETRY=1`, mirroring the env-gated OTel init — a full OTLP
-//!   exporter is a documented extension point, see Study.md).
+//!   `cost` accumulates per-model token/USD totals; `audit` writes
+//!   `.gitagent/audit.jsonl` with 1000-char result slices; `history` keeps
+//!   per-branch JSONL chat logs; `telemetry` is a JSONL event sink gated by
+//!   `GITAGENT_TELEMETRY=1` (a full OTLP exporter would attach at the same
+//!   `event()` call sites).
 //!
 //! DESIGN PATTERNS USED:
 //!   * Observer — `AuditLogger`/`Telemetry` subscribe to session events by

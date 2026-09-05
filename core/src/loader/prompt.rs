@@ -2,11 +2,15 @@
 //! Module: engine::loader::prompt
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Ordered system-prompt assembly. Ports the section ORDER in `loadAgent()`
-//!   (study.md §2.1): manifest header → SOUL → RULES → parent RULES → DUTIES
-//!   → AGENTS.md → Memory → Knowledge → Skills → Workflows → Sub-Agents →
-//!   Examples → Plugins → Compliance → Workspace → Task Learning. Sections
-//!   join with "\n\n"; empty ones are skipped.
+//!   Ordered system-prompt assembly. Inputs: manifest header fields plus one
+//!   pre-rendered text block per section (SOUL, RULES, parent RULES, DUTIES,
+//!   AGENTS.md, Memory, Knowledge, Skills, Workflows, Sub-Agents, Examples,
+//!   Plugins, Workspace, Task Learning). Steps: `PromptBuilder::new()` seeds
+//!   the `# {name} v{version}` header → each `section()` appends non-empty
+//!   text in caller order → `build()` joins with "\n\n". Outputs: the single
+//!   system-prompt string. Invariants: the section order is fixed so model
+//!   behaviour stays deterministic; empty/blank sections are skipped so
+//!   missing files leave no gaps.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Builder — `PromptBuilder::new()` + `section()` chaining + `build()`.
@@ -31,8 +35,8 @@
 ///
 /// # Description
 /// Starts with the `# {name} v{version}\n{description}` header (always
-/// present, like TS). `section()` appends non-empty text; `build()` joins
-/// everything with `"\n\n"`.
+/// present as the first block). `section()` appends non-empty text;
+/// `build()` joins everything with `"\n\n"`.
 #[derive(Debug, Clone)]
 pub struct PromptBuilder {
     parts: Vec<String>,
@@ -81,7 +85,13 @@ impl PromptBuilder {
     }
 }
 
-/// The hardcoded `# Memory` persona block (mirrors TS loader text).
+/// The hardcoded `# Memory` persona block (long-term memory rules).
+///
+/// # Description
+/// Tells the model where memory lives (`memory/MEMORY.md`, git-committed),
+/// to load it at the start of important work, and to persist durable facts
+/// with the `memory` tool (save action + commit message) so they survive
+/// across sessions.
 ///
 /// # Example
 /// ```rust
@@ -99,10 +109,10 @@ pub fn memory_block() -> String {
 /// The MANDATORY first-priority skills block wrapping `entries` XML.
 ///
 /// # Description
-/// Ports `formatSkillsForPrompt()`: each entry is
-/// `<skill><name/><description/><location/><confidence/></skill>`. The model
-/// MUST check this registry before acting — that rule is the whole point of
-/// the block.
+/// Each entry is `<skill><name/><description/><location/><confidence/></skill>`
+/// inside `<available_skills>`. The block instructs the model to check this
+/// registry before acting and to load the matching SKILL.md — that
+/// check-first rule is the whole point of the block.
 ///
 /// # Example
 /// ```rust
@@ -122,9 +132,11 @@ pub fn skills_block(entries: &str) -> String {
 /// Workspace-directory rules, with a cloud-mode variant.
 ///
 /// # Description
-/// Mirrors the TS `# Workspace Directory` section: generated artifacts go to
-/// `workspace/`. When `cloud` is true (GITAGENT_CLOUD / K8s / Render / Fly
-/// env detected), GUI `open` commands are forbidden.
+/// Directs generated artifacts (reports, exports, scratch files) into
+/// `workspace/` instead of the repo root unless the user asks otherwise.
+/// When `cloud` is true (GITAGENT_CLOUD / K8s / Render / Fly env detected
+/// by the caller), an extra Cloud Mode paragraph forbids GUI `open`
+/// commands because the container is headless.
 ///
 /// # Example
 /// ```rust

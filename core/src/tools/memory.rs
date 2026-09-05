@@ -2,16 +2,26 @@
 //! Module: engine::tools::memory
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The `memory` tool — git-backed long-term memory. Ports
-//!   `src/tools/memory.ts`: layered config (`memory/memory.yaml`, working
-//!   layer = `"working"` else first, default `memory/MEMORY.md`), `load`
-//!   (trimmed content / `"No memories yet."`), `save` (overflow archive to
-//!   `memory/archive/YYYY-MM.md` when over `max_lines`, then
-//!   `git add + git commit -m`, quotes escaped, commit failure NON-fatal).
+//!   The `memory` tool — file-backed long-term memory with a working layer.
+//!   Flow: `load` reads the active layer file (trimmed, or a friendly
+//!   `No memories yet` placeholder); `save` writes content, archives
+//!   overflow when over `max_lines`, then best-effort commits via argv git
+//!   (no shell, quotes escaped; commit failure is a warning, not an error).
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `MemoryLayer` — {name, path, max_lines} config record.
 //!   * `MemoryTool`  — `new(agent_dir)`; `load_layer_config()` helper.
+//!
+//! HOW IT WORKS (layers + overflow + git safety):
+//!   * Layer file `memory/memory.yaml` lists layers; the layer named
+//!     `working` wins, else the first layer, else a default pointing at
+//!     `memory/MEMORY.md`. Missing or invalid config yields an empty list.
+//!   * Overflow: when content exceeds `max_lines`, the oldest lines are
+//!     appended to `memory/archive/YYYY-MM.md` with a timestamp separator
+//!     and only the newest `max_lines` lines are kept in the working file.
+//!   * Git uses argv form (`git add <path>`, `git commit -m <msg>`) with
+//!     the working directory set to the agent dir, so message text can
+//!     never escape into shell interpretation.
 //!
 //! HOW TO USE (example):
 //! ```rust,no_run
@@ -165,8 +175,8 @@ impl AgentTool for MemoryTool {
                     .get("message")
                     .and_then(|v| v.as_str())
                     .unwrap_or("update memory");
-                // Overflow archive: keep last N lines, append the rest to
-                // memory/archive/YYYY-MM.md (TS `archiveOverflow` rule).
+                // Overflow archive: keep the newest N lines, append older
+                // lines to a monthly archive file with a timestamp marker.
                 let mut to_write = content.to_string();
                 if let Some(max) = layer.max_lines {
                     let lines: Vec<&str> = content.lines().collect();
@@ -192,7 +202,7 @@ impl AgentTool for MemoryTool {
                 if let Err(e) = std::fs::write(&mem_path, &to_write) {
                     return Ok(ToolOutput::err(format!("Error: cannot save memory: {e}")));
                 }
-                // Git commit: best-effort (TS: commit failure is a warning).
+                // Git commit is best-effort: failure returns a warning value.
                 let msg_esc = message.replace('"', "'");
                 let add = std::process::Command::new("git")
                     .args(["add", &layer.path])

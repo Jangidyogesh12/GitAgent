@@ -2,11 +2,30 @@
 //! Module: cli::repl (src/repl.rs)
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The interactive chat loop. Ports the readline REPL in `src/index.ts`
-//!   (prompt `→ `, per-line `agent.prompt()`) plus its slash commands:
-//!   /quit /exit, /memory, /skills, /tasks, /learned, /plugins,
-//!   /skill:<name> [args]. Multi-turn state comes from `Session` (the SDK
-//!   owns the transcript; the REPL is presentation).
+//!   The interactive chat loop: read lines on stdin, run each as an agent
+//!   turn, and render the streamed result. Lines starting with `/` are
+//!   local slash commands (process info / skill lookup); everything else is
+//!   sent as a prompt. Multi-turn state lives in `sdk::Session`, which owns
+//!   the transcript — this module is presentation + input routing only.
+//!
+//! HOW IT WORKS:
+//!   * Startup: builds shared `QueryOptions` from CLI flags via
+//!     `query_options()`, opens one `sdk::Session` (loads manifest, tools,
+//!     gates, model client once), and prints the session id plus hints.
+//!   * Input: `read_line("→ ")` flushes the prompt, blocks on stdin, and
+//!     returns `None` on EOF/Ctrl-D to exit. Empty lines are skipped.
+//!   * Dispatch: slash lines go to `handle_slash()` (`false` breaks the
+//!     loop); normal lines call `session.send(text).await` and drain the
+//!     returned channel through `render::render_stream()`. Turn errors print
+//!     to stderr and the loop continues; only `/quit`/`/exit`/EOF exits.
+//!   * Slash commands: `/quit|/exit` (leave), `/help` (command list),
+//!     `/memory` (print `memory/MEMORY.md`), `/skills` (discover + list with
+//!     confidence), `/tasks` (active objectives from
+//!     `.gitagent/learning/tasks.json`), `/learned` (skill confidences),
+//!     `/plugins` (discovered plugins with scope from the `agent.yaml`
+//!     plugins table), `/skill:<name> [args]` (print the matching
+//!     `skills/<name>/SKILL.md` inline plus args with a hint to send it as
+//!     the next prompt).
 //!
 //! FUNCTIONS PRESENT IN THIS FILE:
 //!   * `run()`             — the loop (blocking stdin reader + async turns).
@@ -70,11 +89,11 @@ pub async fn run(work_dir: PathBuf, cli: &Cli) {
 /// Handle one slash command; false = exit the REPL.
 ///
 /// # Description
-/// Ports the TS command table: /quit|/exit (leave), /memory (print
-/// MEMORY.md), /skills (refresh + list with confidence), /tasks (active
-/// from tasks.json), /learned (learned skills + ratios), /plugins (loaded
-/// plugins + contributions), /skill:<name> [args] (inline SKILL.md + args as
-/// a one-shot prompt through the session), /help (this table).
+/// Dispatch table: /quit|/exit (leave), /memory (print MEMORY.md), /skills
+/// (refresh + list with confidence), /tasks (active from tasks.json),
+/// /learned (learned skills + ratios), /plugins (loaded plugins +
+/// contributions), /skill:<name> [args] (inline SKILL.md + args as a
+/// one-shot prompt through the session), /help (this table).
 ///
 /// # Example
 /// ```rust,no_run

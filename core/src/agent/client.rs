@@ -5,8 +5,7 @@
 //!   The Strategy-pattern seam for LLM providers. The engine (`agent.rs`)
 //!   calls `LlmClient::complete()`; `llm` plugs in the real
 //!   OpenAI-compatible streaming implementation. This keeps `engine`
-//!   provider-agnostic (ports pi-agent-core's provider interface, replacing
-//!   the `@mariozechner/pi-ai` registry the TS code used).
+//!   provider-agnostic: one trait replaces all provider-specific registries.
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `LlmClient`   — async `complete(system, messages, tools, params)`.
@@ -28,9 +27,8 @@ use serde::{Deserialize, Serialize};
 ///
 /// # Description
 /// All-optional so manifests only set what they need; `None` means "let the
-/// provider decide". Mirrors the TS `modelOptions` mapping (temperature,
-/// max_tokens→maxTokens, top_p, top_k, stop_sequences — top_k/stop are
-/// provider-passed in the llm crate).
+/// provider decide". Covers temperature, max_tokens, top_p, top_k and stop
+/// sequences (top_k / stop are passed through to providers that support them).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GenParams {
     /// Sampling temperature.

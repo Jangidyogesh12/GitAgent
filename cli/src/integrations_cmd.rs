@@ -7,6 +7,18 @@
 //!   heuristics), `export --format <slug> --out <dir>` (render native files
 //!   for OpenCode / NanoBot / OpenClaw / Claude Code / Lyzr).
 //!
+//! HOW IT WORKS:
+//!   * Dispatch: `run()` matches `list` (default when no action is given) /
+//!     `detect` / `export`.
+//!   * List: iterates `all_harnesses()` and prints id, label, config file,
+//!     and description per adapter.
+//!   * Detect: calls `detect_available()` (env-var / binary heuristics) and
+//!     prints each hit, or a hint about which keys to set when empty.
+//!   * Export: parses the `--format` slug into a `Harness`, requires `--out`,
+//!     loads the agent (`load_agent`), collects manifest tools + discovered
+//!     skill names + first model spec + MCP servers, then calls `export_for()`
+//!     and prints each written file under the output dir.
+//!
 //! FUNCTIONS PRESENT IN THIS FILE:
 //!   * `run()` — dispatch list|detect|export.
 //!

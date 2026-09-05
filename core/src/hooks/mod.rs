@@ -2,12 +2,12 @@
 //! Crate: hooks
 //! ----------------------------------------------------------------------------
 //! WHAT THIS CRATE IS FOR:
-//!   Lifecycle script hooks. Ports `src/hooks.ts`: load `hooks/hooks.yaml`,
-//!   spawn `sh <script>` with JSON on stdin + 10s timeout, parse stdout as
+//!   Lifecycle script hooks. Loads `hooks/hooks.yaml`, spawns
+//!   `sh <script>` with JSON on stdin plus a 10s timeout, parses stdout as
 //!   `{action: allow|block|modify, reason?, args?}` (unparseable → allow),
-//!   path-traversal guard (script must stay under its base dir), fail-OPEN
-//!   (hook errors never block — they log + allow), and `HookGate`, the
-//!   `ToolGate` adapter that wires `pre_tool_use` into the engine.
+//!   enforces a path-traversal guard (script must stay under its base dir),
+//!   stays fail-open (hook errors log + allow, never block), and exposes
+//!   `HookGate`, the `ToolGate` adapter wiring `pre_tool_use` into the engine.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Chain of Responsibility — `run_hooks()` runs definitions in order;

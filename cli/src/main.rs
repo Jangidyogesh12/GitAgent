@@ -2,11 +2,35 @@
 //! Binary: gitagent (crate cli, src/main.rs)
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The `gitagent` command entry: clap CLI surface + dispatch. Ports
-//!   `src/index.ts`: `plugin` subcommand shortcut → flag parsing → `--repo`
-//!   session / `--dir` scaffold → `.env` loading → compliance warnings →
-//!   one-shot (`--prompt`) or interactive REPL. Presentation only — the
-//!   engine lives in `sdk`.
+//!   The `gitagent` command entry: clap CLI surface + dispatch. Flag parsing
+//!   decides the run mode: `plugin` / `integrations` subcommands run first
+//!   and exit; otherwise `--repo <url>` opens a remote session branch while
+//!   the default `--dir` path scaffolds/validates a local agent dir. Then it
+//!   loads `.env` files, resolves the model, runs the startup API-key check,
+//!   prints the banner, and either executes a single prompt (`--prompt` /
+//!   trailing arg) or drops into the interactive REPL. Presentation only —
+//!   the engine lives in `sdk` and `engine`.
+//!
+//! HOW IT WORKS:
+//!   * Flag parsing: clap `Cli` derives `--dir/--model/--prompt/--env/--repo/
+//!     --pat/--session/--permission-mode/--allow-tool/--deny-tool` plus the
+//!     `plugin` and `integrations` subcommands.
+//!   * Subcommand shortcut: `plugin` and `integrations` dispatch to their
+//!     handler modules immediately, before any agent loading.
+//!   * Env stack: `helpers::load_env_stack()` loads `~/.gitagent/.env` then
+//!     `<dir>/.env`, with the agent-local file winning.
+//!   * Session vs scaffold: `--repo` requires a token (`--pat` or
+//!     `GITHUB_TOKEN`/`GIT_TOKEN`), clones into the work dir, and creates a
+//!     session branch via `init_local_session`; without `--repo` the dir is
+//!     scaffolded in place via `ensure_repo()`.
+//!   * Startup: `loader::load_agent()` resolves manifest + system prompt +
+//!     model list; `api_key_check()` maps the model provider prefix to its
+//!     required env var and bails with a hint when missing; `print_banner()`
+//!     shows name/version/model/skills/session.
+//!   * One-shot vs REPL: `--prompt`/`prompt_arg` builds `QueryOptions` via
+//!     `query_options()` and streams through `sdk::query()` + `render_stream`
+//!     returning an exit code; otherwise `repl::run()` owns a multi-turn
+//!     `Session`. A `--repo` session is finalised (push/notes) on exit.
 //!
 //! DESIGN PATTERNS USED:
 //!   * Command — clap `Cli`/`Commands` types; each subcommand maps to one
@@ -16,7 +40,7 @@
 //! FUNCTIONS PRESENT IN THIS FILE:
 //!   * `main()`        — async entry: parse → dispatch → run.
 //!   * `run_once()`    — one-shot `--prompt` mode (render + exit code).
-//!   * `api_key_check()` — provider→env-var startup check (TS parity).
+//!   * `api_key_check()` — provider→env-var startup check.
 //!   * `print_banner()`— name/version/model/tools/skills summary.
 //!
 //! HOW TO USE (examples):
@@ -137,7 +161,7 @@ async fn main() -> Result<()> {
         None => {}
     }
 
-    // Env stack: ~/.gitagent/.env then <dir>/.env (later wins) — TS parity.
+    // Env stack: ~/.gitagent/.env then <dir>/.env (later wins).
     engine::helpers::load_env_stack(&cli.dir);
 
     // Repo mode XOR local dir mode.
@@ -168,7 +192,7 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Resolve model + startup API-key check (TS index.ts parity).
+    // Resolve model + startup API-key check.
     let loaded =
         engine::loader::load_agent(&work_dir, cli.model.as_deref(), cli.session.as_deref())
             .context("loading agent")?;
@@ -193,8 +217,8 @@ async fn main() -> Result<()> {
 /// One-shot `--prompt` mode: render the stream, return exit code.
 ///
 /// # Description
-/// Streams deltas to stdout; any `Error` message → exit 1 (like TS
-/// single-shot which propagates failures to the shell).
+/// Streams deltas to stdout; any `Error` message → exit 1 so shell callers
+/// can detect failure (success → 0).
 async fn run_once(work_dir: PathBuf, prompt: String, cli: &Cli) -> i32 {
     let opts = query_options(work_dir, prompt, cli);
     let mut rx = sdk::query(opts);
@@ -228,7 +252,7 @@ fn api_key_check(specs: &[String]) -> Result<()> {
         anyhow::bail!("no model configured")
     };
     let provider = first.split(':').next().unwrap_or("");
-    // Local / test providers need no key (matches TS behaviour + llm crate).
+    // Local / test providers need no key.
     if matches!(provider, "ollama" | "mock" | "") {
         return Ok(());
     }

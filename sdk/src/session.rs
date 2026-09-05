@@ -2,10 +2,30 @@
 //! Module: sdk::session
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Multi-turn sessions: one `Agent` (+ client + gates) kept alive across
-//!   `send()` calls, with the transcript accumulating. Ports the RE-usable
-//!   half of `src/sdk.ts` (the TS `Query` handle's `steer`/`messages`
-//!   surface maps to repeated `send()` here; abort via `abort()`).
+//!   Multi-turn sessions: one `Agent` (+ model client + gates) kept alive
+//!   across `send()` calls, with the transcript accumulating inside the
+//!   agent. `open()` does the one-time build; each `send()` runs a single
+//!   turn and streams the result; `abort()` cancels the running turn and
+//!   `transcript()` snapshots history so far.
+//!
+//! HOW IT WORKS:
+//!   * `open(opts)` runs the same build as a single-shot query minus the
+//!     prompt: load manifest + system prompt (plus optional suffix), collect
+//!     builtin + learning + declarative + `extra_tools`, narrow with
+//!     `build_registry()` (allowlist then denylist), attach the permission
+//!     gate plus the script hook gate when hooks exist, build the
+//!     preferred+fallback model client, and construct the `Agent` with
+//!     max-turns + generation params. `opts.prompt` is ignored — each
+//!     `send()` supplies its turn.
+//!   * `send(prompt)` calls `agent.prompt()` with the shared client,
+//!     receives engine events, maps them to `SdkMessage`s on a fresh channel
+//!     (`MessageDelta`→`Delta`, error `MessageEnd`→`Error` so provider
+//!     failures are visible instead of silent empty turns,
+//!     `MessageEnd`→`Assistant`, tool start/end→`ToolUse`/`ToolResult`,
+//!     `AgentEnd`→`System("session_end")`), and returns the receiver. The
+//!     agent appends every turn to its internal transcript.
+//!   * `abort()` sets the agent's cooperative cancel flag (checked each loop
+//!     iteration); `transcript()` clones the accumulated messages.
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `Session` — `open()` + `send()` + `abort()` + `transcript()`.

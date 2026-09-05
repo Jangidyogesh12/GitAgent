@@ -3,21 +3,32 @@
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
 //!   The `cli` tool — run a shell command, capture output, kill on timeout.
-//!   Ports `src/tools/cli.ts` exactly: `sh -c` spawn, own process group so
-//!   grandchildren die too (bare `child.kill()` leaves `foo &` alive holding
-//!   the pipe open → hang), SIGTERM → 3s → SIGKILL escalation, rolling-tail
-//!   memory bound, non-zero exit → error RESULT (not Rust Err), empty →
-//!   `"(no output)"`, `[output truncated, showing last ~100KB]` marker.
+//!   Flow: `sh -c` spawn with piped stdout/stderr in tool cwd, await with
+//!   timeout, on timeout terminate the whole process group with SIGTERM,
+//!   grace 3s, then reap; on exit fold stdout plus stderr-on-failure into
+//!   a rolling-tail truncated result. Non-zero exit becomes an error result
+//!   value (not a Rust Err); empty output becomes `(no output)`; over-long
+//!   output keeps the trailing ~100KB with a truncation marker.
 //!
 //! DESIGN PATTERNS USED:
-//!   * Strategy — `SandboxExec` swaps LOCAL shell execution for a remote-VM
-//!     argv runner (ports the `sandbox-cli.ts` twin without duplicating the
-//!     timeout/truncation logic). `None` = run locally.
-//!   * Command — the shell string + timeout travel as one invocable object.
+//!   * Strategy — `SandboxExec` swaps local shell execution for a remote
+//!     argv runner without duplicating timeout/truncation logic.
+//!     `None` means run locally.
+//!   * Command — the shell string plus timeout travels as one invocable unit.
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `SandboxExec` — Strategy trait for remote execution backends.
 //!   * `CliTool`     — the tool (Sequential: mutates the world).
+//!
+//! HOW IT WORKS (lifecycle + limits):
+//!   * Local spawn uses `sh -c` so compound commands, pipes, and redirects
+//!     work; `kill_on_drop(true)` guarantees reaping on timeout paths.
+//!   * Group kill matters because bare child kill leaves backgrounded
+//!     grandchildren alive holding the pipe open, which would hang the
+//!     output read; signalling the negative PID reaches the whole group.
+//!   * Output handling: lossy UTF-8 decode, append `[stderr]` section on
+//!     failure, keep the tail (most recent lines are usually the
+//!     diagnostic), append `Exit code: N` on failure for model clarity.
 //!
 //! HOW TO USE (example):
 //! ```rust,no_run
@@ -38,12 +49,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Remote-execution backend (Strategy). Ports the `sandbox-*.ts` twins.
+/// Remote-execution backend (Strategy). Alternate runner for sandboxes.
 ///
 /// # Description
 /// `run(command, cwd, timeout)` executes WITHOUT a local shell and returns
-/// stdout (+ stderr appended on failure, like the local path). Implement for
-/// e2b/SSH backends; `None` in `CliTool` means "run on this machine".
+/// stdout (plus stderr appended on failure, like the local path). Implement
+/// for isolated/remote backends; `None` in `CliTool` means run locally.
 #[async_trait]
 pub trait SandboxExec: Send + Sync {
     /// Run `command` remotely; see trait docs for the output contract.
@@ -121,7 +132,7 @@ impl AgentTool for CliTool {
             .unwrap_or(self.default_timeout);
         let timeout = Duration::from_secs(timeout_s.max(1));
 
-        // Remote backend (sandbox twin) short-circuits local spawn.
+        // Remote backend short-circuits local spawn.
         if let Some(sb) = &self.sandbox {
             return match tokio::time::timeout(timeout, sb.run(&command, &self.cwd, timeout)).await {
                 Err(_) => Ok(ToolOutput::err(format!(
@@ -132,9 +143,9 @@ impl AgentTool for CliTool {
             };
         }
 
-        // Local: `sh -c` with piped output. On timeout we SIGTERM the child
-        // and, best-effort, its process GROUP (covers `cmd &` grandchildren
-        // that would otherwise hold the pipe open — the TS `kill(-pid)` rule).
+        // Local: `sh -c` with piped output. On timeout SIGTERM the child
+        // and, best-effort, its process GROUP (covers backgrounded
+        // grandchildren that would otherwise hold the pipe open).
         let mut cmd = tokio::process::Command::new("sh");
         cmd.arg("-c").arg(&command).current_dir(&self.cwd);
         cmd.stdout(std::process::Stdio::piped())
@@ -146,8 +157,8 @@ impl AgentTool for CliTool {
         let out = tokio::time::timeout(timeout, child.wait_with_output()).await;
         let output = match out {
             Err(_) => {
-                // Timeout: best-effort group kill, 3s grace (TS escalation),
-                // then the `kill_on_drop(true)` reap finishes the job.
+                // Timeout: best-effort group kill, 3s grace, then the
+                // `kill_on_drop(true)` reap finishes the job.
                 #[cfg(unix)]
                 if let Some(pid) = child_id {
                     let _ = tokio::process::Command::new("kill")

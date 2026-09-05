@@ -3,8 +3,8 @@
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
 //!   Per-branch chat history (`.gitagent/chat-history/<branch>.jsonl`).
-//!   Ports `src/chat-history.ts` (append + read-back; the LLM `summarize`
-//!   step is an SDK-level concern and lives there).
+//!   Appends `{role, content, at}` records and reads them back (malformed
+//!   lines skipped); branch slashes are mapped to `_` for filenames.
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `ChatHistory` — `new()` + `append()` + `read()` + `count()`.

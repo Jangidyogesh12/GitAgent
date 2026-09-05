@@ -2,16 +2,25 @@
 //! Module: engine::tools::declarative
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Declarative YAML tools (`tools/*.yaml`): a name + description +
-//!   JSON-schema + `implementation: {script, runtime}`. Ports
-//!   `src/tool-loader.ts`: spawn `runtime script` with args JSON on STDIN,
-//!   120s timeout, stdout decoded as (1) `data:image/...;base64,` image,
-//!   (2) JSON `text`/`result` field, else (3) raw text; non-zero exit →
-//!   error result; empty → `"(no output)"`.
+//!   Declarative script tools: each YAML file defines a name, description,
+//!   JSON input schema, and a script plus runtime interpreter. At runtime
+//!   the tool spawns `runtime <abs-script-path>` with the call args as JSON
+//!   on stdin, waits up to 120s, then decodes stdout as (1) an image-marker
+//!   line, (2) a JSON `text`/`result` field, else (3) raw trimmed text.
+//!   Non-zero exit becomes an error result; empty output becomes
+//!   `"(no output)"`.
 //!
 //! TYPES / FUNCTIONS PRESENT IN THIS FILE:
 //!   * `DeclarativeTool`         — one script-backed tool (Sequential).
 //!   * `load_declarative_tools()`— scan `tools/*.yaml` (fail-soft each).
+//!
+//! HOW IT WORKS (safety + data flow):
+//!   * Path guard: the script must resolve under `<agent_dir>/tools/`;
+//!     traversal attempts are rejected before spawning.
+//!   * Absolute script path is used because the child runs with
+//!     cwd=`agent_dir`, where a relative argv would no longer resolve.
+//!   * Sequential mode is deliberate: scripts can touch anything, and
+//!     serial execution is always safe.
 //!
 //! HOW TO USE (example):
 //! ```yaml
@@ -28,7 +37,7 @@ use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Timeout for declarative script tools (TS hard-codes 120s).
+/// Timeout for declarative script tools (fixed 120s budget).
 pub const DECLARATIVE_TIMEOUT_SECS: u64 = 120;
 
 /// One script-backed tool loaded from `tools/*.yaml`.
@@ -66,13 +75,13 @@ impl AgentTool for DeclarativeTool {
         self.schema.clone()
     }
     fn execution_mode(&self) -> ExecutionMode {
-        // TS runs these parallel by default; we choose Sequential (fail-safe:
-        // scripts can touch anything, and serialisation is always safe).
+        // Sequential is the fail-safe default: scripts can touch anything,
+        // and serialisation is always safe.
         ExecutionMode::Sequential
     }
 
     async fn execute(&self, _id: &str, args: serde_json::Value) -> anyhow::Result<ToolOutput> {
-        // Path-traversal guard (mirrors hooks.ts): script must stay under tools/.
+        // Path-traversal guard: script must stay under the tools directory.
         let script_path = self.agent_dir.join("tools").join(&self.script);
         let tools_dir = self.agent_dir.join("tools");
         let norm_ok = script_path.starts_with(&tools_dir)
@@ -101,7 +110,7 @@ impl AgentTool for DeclarativeTool {
                 )))
             }
         };
-        // Args JSON on stdin (TS tool-loader contract).
+        // Args JSON goes on stdin per the script-tool contract.
         if let Some(mut stdin) = child.stdin.take() {
             use tokio::io::AsyncWriteExt;
             let payload = serde_json::to_string(&args).unwrap_or_else(|_| "{}".into());
@@ -130,13 +139,13 @@ impl AgentTool for DeclarativeTool {
     }
 }
 
-/// Decode script stdout per the TS `tool-loader.ts` rules.
+/// Decode script stdout into model-visible text.
 ///
 /// # Description
-/// (1) Any line starting `data:image/` with `;base64,` → kept as an image
-/// marker (text transports carry the first 200 chars); (2) valid JSON with a
-/// `text`/`result` string field → that field; (3) otherwise raw trimmed text;
-/// empty → `"(no output)"`.
+/// (1) Any line starting `data:image/` with `;base64,` is summarised as an
+/// image marker (first 120 chars kept, payload omitted); (2) valid JSON
+/// with a `text`/`result` string field yields that field; (3) otherwise raw
+/// trimmed text; empty input yields `"(no output)"`.
 ///
 /// # Example
 /// ```rust
@@ -170,8 +179,8 @@ pub fn decode_stdout(stdout: &str) -> String {
 /// Scan `tools/*.yaml` and build script tools (fail-soft per file).
 ///
 /// # Description
-/// Ports `loadDeclarativeTools()`. Invalid yamls are skipped with a stderr
-/// warning — one broken tool file must not kill the session.
+/// Invalid files are skipped with a stderr warning — one broken tool file
+/// must not end the session.
 ///
 /// # Example
 /// ```rust,no_run

@@ -2,13 +2,10 @@
 //! Module: engine::observe::telemetry
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Env-gated telemetry sink (`.gitagent/telemetry.jsonl`). Ports the
-//!   gating half of `src/telemetry.ts` (init only when
-//!   `OTEL_EXPORTER_OTLP_ENDPOINT` / console-exporter is set and
-//!   `GITAGENT_OTEL_ENABLED != false`; here the gate is
-//!   `GITAGENT_TELEMETRY=1`). A full OTLP exporter is a documented
-//!   extension point (Study.md) — the call sites below are where its
-//!   spans would attach.
+//!   Env-gated telemetry sink (`.gitagent/telemetry.jsonl`). Active only
+//!   when `GITAGENT_TELEMETRY=1`; `event()` appends `{event, at, fields}`
+//!   records and is a no-op otherwise. A future OTLP exporter would attach
+//!   spans at these same `event()` call sites.
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `Telemetry` — `new()` (reads env) + `event()` + `is_enabled()`.

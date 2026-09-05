@@ -2,12 +2,29 @@
 //! Module: cli::plugin_cmd (src/plugin_cmd.rs)
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   `gitagent plugin ...` — install/list/remove/enable/disable/init.
-//!   Ports `src/plugin-cli.ts`: git-URL → clone into `.gitagent/plugins/`,
-//!   local path → copy into `plugins/`, manifest edits via comment-friendly
-//!   YAML round-trip (we re-serialise only the `plugins:` table, preserving
-//!   the rest byte-for-byte where possible), init scaffolds plugin.yaml +
-//!   tools/ + hooks/ + skills/ + README.
+//!   `gitagent plugin ...` — install/list/remove/enable/disable/init from
+//!   the terminal. Enablement state lives in `agent.yaml` under the
+//!   `plugins:` table; plugin code lives in `plugins/` (local) or
+//!   `.gitagent/plugins/` (cloned remotes).
+//!
+//! HOW IT WORKS:
+//!   * Dispatch: `run()` matches `install|list|remove|enable|disable|init`
+//!     (with `ls`/`rm`/`create` aliases) and validates the required target.
+//!   * Install: URLs (`http…` / `git@…`) derive a name from the last path
+//!     segment and are `git clone --depth 1`ed into
+//!     `.gitagent/plugins/<name>` (refuses to overwrite unless `--force`,
+//!     records `{enabled: true, source: <url>}`); local paths are copied
+//!     recursively via `copy_dir()` into `plugins/<name>` (records
+//!     `{enabled: true}`).
+//!   * List/remove/toggle: `discover_plugins(dir, table)` merges the two
+//!     plugin dirs with the manifest table for display; `remove` deletes
+//!     both dirs plus the table entry; `set_enabled` flips
+//!     `plugins.<name>.enabled`.
+//!   * Init: validates kebab-case, scaffolds `plugins/<name>/` with
+//!     `plugin.yaml` + `tools/` + `hooks/` + `skills/` + `README.md`.
+//!   * Manifest edit: `write_table()` reads `agent.yaml`, replaces only the
+//!     `plugins` key, and re-serialises — the rest of the document keeps its
+//!     existing keys/values.
 //!
 //! FUNCTIONS PRESENT IN THIS FILE:
 //!   * `run()` — dispatch install|list|remove|enable|disable|init.
@@ -224,9 +241,9 @@ fn remove_table_entry(dir: &Path, name: &str) -> Result<()> {
 /// Rewrite ONLY the `plugins:` table, preserving the rest of agent.yaml.
 ///
 /// # Description
-/// Round-trips the whole manifest through serde_yaml (key order stable for
-/// mapping output) — the pragmatic equivalent of the TS comment-preserving
-/// `yaml.parseDocument` edit. Documented as approximate in Study.md.
+/// Round-trips the whole manifest through serde_yaml and replaces just the
+/// `plugins` key before writing back, so unrelated sections keep their
+/// existing keys and values.
 fn write_table(dir: &Path, table: &serde_json::Value) -> Result<()> {
     let path = manifest_path(dir);
     let text = std::fs::read_to_string(&path).context("reading agent.yaml")?;

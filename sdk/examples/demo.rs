@@ -16,7 +16,7 @@ async fn main() {
         .nth(2)
         .unwrap_or_else(|| "say hi".to_string());
 
-    // Custom tool in four lines (mirrors TS `tool()` helper).
+    // Custom tool in four lines: name + description + JSON schema + closure.
     let shout = tool(
         "shout",
         "Uppercase some text",
