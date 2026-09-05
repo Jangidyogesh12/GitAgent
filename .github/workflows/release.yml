@@ -153,6 +153,11 @@ jobs:
     needs: [resolve, build] # wait for the version AND every OS leg
     runs-on: ubuntu-latest
     steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+
       - name: Download all packages
         uses: actions/download-artifact@v4
         with:
