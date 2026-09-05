@@ -105,8 +105,8 @@ pub fn resolve_model(spec: &str) -> ModelSpec {
         api_key = std::env::var("LYZR_API_KEY").unwrap_or_default();
     }
     if api_key.is_empty() && (provider == "opencode" || provider == "opencode-go") {
-    // `opencode-go` would otherwise map to a suffixed key name, which
-    // does not exist — both plans authenticate with the shared key.
+        // `opencode-go` would otherwise map to a suffixed key name, which
+        // does not exist — both plans authenticate with the shared key.
         api_key = std::env::var("OPENCODE_API_KEY").unwrap_or_default();
     }
     ModelSpec {
@@ -121,9 +121,9 @@ fn default_base_url(provider: &str) -> String {
     match provider {
         "ollama" => "http://localhost:11434/v1".to_string(),
         "anthropic" => "https://api.anthropic.com/v1".to_string(),
-    // OpenCode Zen gateway (OpenAI-compatible chat-completions family;
-    // key from the shared gateway key via the rule below) and the Go plan,
-    // which lives under a separate path segment.
+        // OpenCode Zen gateway (OpenAI-compatible chat-completions family;
+        // key from the shared gateway key via the rule below) and the Go plan,
+        // which lives under a separate path segment.
         "opencode" => "https://opencode.ai/zen/v1".to_string(),
         "opencode-go" => "https://opencode.ai/zen/go/v1".to_string(),
         "google" | "gemini" => {
