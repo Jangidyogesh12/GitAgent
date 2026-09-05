@@ -2,7 +2,7 @@
 //! Crate: helpers
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   This is the crate root (`lib.rs`). It declares and re-exports every
+//!   This is the helpers facade (`helpers/mod.rs`). It declares and re-exports every
 //!   shared utility module used by ALL other gitagent crates, so the rest of
 //!   the workspace never duplicates helpers.
 //!

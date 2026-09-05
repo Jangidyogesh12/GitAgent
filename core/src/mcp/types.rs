@@ -46,7 +46,7 @@ pub enum McpServerConfig {
         #[serde(default)]
         timeout_ms: Option<u64>,
     },
-    /// Remote HTTP/SSE endpoint (parsed; transport pending — see lib.rs).
+    /// Remote HTTP/SSE endpoint (parsed; transport pending — see `crate::mcp::manager`).
     Http {
         /// http | sse (defaults to http when absent).
         #[serde(default, rename = "type")]

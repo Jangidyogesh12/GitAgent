@@ -2,7 +2,7 @@
 //! Integration test: mock SSE server → full `complete_with_fallback`.
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Regression backbone (like `rust/gitagent-rs/tests/slice.rs`): spins a
+//!   Regression backbone: spins a
 //!   tiny TCP mock speaking OpenAI SSE and drives the REAL client code, so
 //!   provider parsing is covered without API keys or the network.
 //!

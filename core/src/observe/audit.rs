@@ -96,7 +96,7 @@ impl AuditLogger {
 }
 
 fn helpers_slice_append(path: &PathBuf, v: &serde_json::Value) {
-    // Cheap local append (common::append_jsonl would need the dep; inline it).
+    // Cheap local append (crate::helpers::jsonl::append_jsonl would add a dep; inline it).
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent).ok();

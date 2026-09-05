@@ -10,7 +10,7 @@
 //! DESIGN PATTERNS USED:
 //!   * Strategy — `AgentTool` trait; the loop calls `execute()` polymorphically.
 //!   * Factory — describes (not implements) how `builtin_tools()` builds the
-//!     registry; see the `tools` crate for the factory itself.
+//!     registry; see `crate::tools::factory` for the factory itself.
 //!
 //! TYPES PRESENT IN THIS FILE:
 //!   * `ExecutionMode` — Parallel (pure/read-only) vs Sequential (mutating).
@@ -38,7 +38,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 /// Concurrency contract of a tool (pi's exact rule is implemented in
-/// `agent.rs`: a batch runs concurrently UNLESS any tool in it — or the
+/// `agent/runner.rs`: a batch runs concurrently UNLESS any tool in it — or the
 /// agent itself — is `Sequential`, in which case the whole batch serialises).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExecutionMode {

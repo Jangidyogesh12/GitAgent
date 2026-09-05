@@ -157,7 +157,7 @@ pub async fn run_loop(
             .complete(&ctx.system_prompt, &view, &tool_schemas, &cfg.params)
             .await;
         // Stream the finished text as one delta (streaming happens inside
-        // the llm crate for live runs; the trait only promises the turn).
+        // the `crate::llm` module for live runs; the trait only promises the turn).
         let text = reply.text();
         if !text.is_empty() {
             let _ = tx.send(AgentEvent::MessageDelta {

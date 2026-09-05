@@ -2,8 +2,8 @@
 //! Module: engine::agent::client
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   The Strategy-pattern seam for LLM providers. The engine (`agent.rs`)
-//!   calls `LlmClient::complete()`; `llm` plugs in the real
+//!   The Strategy-pattern seam for LLM providers. The engine (`agent/runner.rs`
+//!   `run_loop()`) calls `LlmClient::complete()`; `llm` plugs in the real
 //!   OpenAI-compatible streaming implementation. This keeps `engine`
 //!   provider-agnostic: one trait replaces all provider-specific registries.
 //!
@@ -69,8 +69,8 @@ pub trait LlmClient: Send + Sync {
 ///
 /// # Description
 /// Always returns `text` as a `Stop` turn. Lets `run_loop()` be tested
-/// without API keys — the same role `spawn_mock_llm` played in the
-/// `rust/gitagent-rs/tests/slice.rs` harness.
+/// without API keys — the same role the `core/tests/mock_sse.rs` harness
+/// plays for the live LLM path.
 #[derive(Debug, Clone)]
 pub struct NoopClient {
     /// The text every turn returns.

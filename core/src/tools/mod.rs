@@ -13,7 +13,7 @@
 //! DESIGN PATTERNS USED:
 //!   * Strategy — each tool implements `engine::agent::AgentTool`.
 //!   * Factory — `builtin_tools()` builds the registry (local set; sandbox
-//!     variants are a `SandboxExec` Strategy swap — see `cli.rs`).
+//!     variants are a `SandboxExec` Strategy swap — see `crate::tools::cli`).
 //!   * Command — each tool encapsulates a request (name plus args JSON) as
 //!     an object the loop can invoke, log, and gate uniformly.
 //!
