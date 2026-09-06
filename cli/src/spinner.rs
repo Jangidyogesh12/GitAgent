@@ -2,21 +2,21 @@
 //! Module: cli::spinner (src/spinner.rs)
 //! ----------------------------------------------------------------------------
 //! WHAT THIS FILE IS FOR:
-//!   Square-spiral progress animation for long CLI operations (update
-//!   downloads, uninstall). A block travels a 5x3 clockwise-inward square
-//!   spiral while work runs in the foreground; the animation lives on a
+//!   Classic single-line spinner animation for long CLI operations (update
+//!   downloads, uninstall). Braille-dot frames cycle next to the message
+//!   while work runs in the foreground; the animation lives on a
 //!   background thread and cleans up after itself.
 //!
 //! HOW IT WORKS:
-//!   * Frames: `frame(step)` renders the 5x3 grid with `█` on the spiral
-//!     head and `·` elsewhere (pure function, unit-tested).
+//!   * Frames: `frame(step)` returns one braille-dot frame (pure function,
+//!     unit-tested).
 //!   * `Spinner::start(msg)` spawns the animation thread when stdout is a
 //!     TTY (otherwise prints a plain line); `finish()`/`fail()` stop it,
-//!     erase the grid, and print the `✓`/`✗` outcome. `Drop` restores the
+//!     erase the line, and print the `✓`/`✗` outcome. `Drop` restores the
 //!     cursor if the spinner is abandoned.
 //!
 //! FUNCTIONS PRESENT IN THIS FILE:
-//!   * `frame()` — render one spiral step (pure).
+//!   * `frame()` — return one spinner frame (pure).
 //!   * `Spinner::start()` — begin animating with a message.
 //!   * `Spinner::finish()` — stop with success.
 //!   * `Spinner::fail()` — stop with failure.
@@ -37,57 +37,26 @@ use std::sync::{
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-/// Grid width (5x3 reads as a square given terminal cell aspect ratio).
-const WIDTH: usize = 5;
-/// Grid height.
-const HEIGHT: usize = 3;
+/// Spinner frames (braille dots, classic rotation).
+const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 /// Frame interval.
 const TICK: Duration = Duration::from_millis(80);
 
-/// Square-spiral path: clockwise from the top-left, winding inward.
-const PATH: [(usize, usize); 15] = [
-    (0, 0),
-    (1, 0),
-    (2, 0),
-    (3, 0),
-    (4, 0),
-    (4, 1),
-    (4, 2),
-    (3, 2),
-    (2, 2),
-    (1, 2),
-    (0, 2),
-    (0, 1),
-    (1, 1),
-    (2, 1),
-    (3, 1),
-];
-
-/// Render one animation step as a 3-line grid.
+/// Return one animation frame.
 ///
 /// # Description
-/// Pure function of `step`: the spiral head is `█`, every other cell `·`.
-/// Steps wrap around `PATH`, so `frame(n) == frame(n + PATH.len())`.
+/// Pure function of `step`: frames cycle, so
+/// `frame(n) == frame(n + FRAMES.len())`.
 ///
 /// # Example
 /// ```rust,ignore
-/// assert_eq!(frame(0), "█····\n·····\n·····");
+/// assert_eq!(frame(0), "⠋");
 /// ```
-pub fn frame(step: usize) -> String {
-    let head = PATH[step % PATH.len()];
-    let mut out = String::with_capacity((WIDTH + 1) * HEIGHT);
-    for y in 0..HEIGHT {
-        for x in 0..WIDTH {
-            out.push(if (x, y) == head { '█' } else { '·' });
-        }
-        if y + 1 < HEIGHT {
-            out.push('\n');
-        }
-    }
-    out
+pub fn frame(step: usize) -> &'static str {
+    FRAMES[step % FRAMES.len()]
 }
 
-/// Running square-spiral animation (see module docs).
+/// Running spinner animation (see module docs).
 pub struct Spinner {
     stop: Arc<AtomicBool>,
     drew: Arc<AtomicBool>,
@@ -95,7 +64,7 @@ pub struct Spinner {
 }
 
 impl Spinner {
-    /// Begin animating with `message` on the line above the spiral.
+    /// Begin animating with `message` followed by the spinner.
     ///
     /// # Description
     /// When stdout is not a TTY, prints one plain line and animates
@@ -112,10 +81,7 @@ impl Spinner {
                 let _ = std::io::stdout().flush();
                 let mut step = 0usize;
                 while !stop.load(Ordering::Relaxed) {
-                    if step > 0 {
-                        print!("\x1b[{HEIGHT}A\r");
-                    }
-                    print!("{msg} …\n{}", frame(step));
+                    print!("\r{msg} {}", frame(step));
                     let _ = std::io::stdout().flush();
                     drew.store(true, Ordering::Relaxed);
                     step += 1;
@@ -133,7 +99,7 @@ impl Spinner {
     pub fn finish(mut self, msg: &str) {
         self.halt();
         if self.drew.load(Ordering::Relaxed) {
-            print!("\x1b[{}A\r\x1b[J", HEIGHT + 1);
+            print!("\r\x1b[K");
         }
         println!("✓ {msg}");
         print!("\x1b[?25h");
@@ -144,7 +110,7 @@ impl Spinner {
     pub fn fail(mut self, msg: &str) {
         self.halt();
         if self.drew.load(Ordering::Relaxed) {
-            print!("\x1b[{}A\r\x1b[J", HEIGHT + 1);
+            print!("\r\x1b[K");
         }
         println!("✗ {msg}");
         print!("\x1b[?25h");
@@ -174,28 +140,13 @@ impl Drop for Spinner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
 
     #[test]
-    fn path_stays_in_bounds_and_visits_unique_cells() {
-        let cells: HashSet<(usize, usize)> = PATH.into_iter().collect();
-        assert_eq!(cells.len(), PATH.len());
-        for (x, y) in PATH {
-            assert!(x < WIDTH && y < HEIGHT);
-        }
-    }
-
-    #[test]
-    fn frames_render_head_on_spiral() {
-        assert_eq!(frame(0), "█····\n·····\n·····");
-        assert_eq!(frame(5), "·····\n····█\n·····");
-        assert_eq!(frame(14), "·····\n···█·\n·····");
-        assert_eq!(PATH.len(), 15);
-    }
-
-    #[test]
-    fn frames_wrap_and_advance() {
-        assert_eq!(frame(15), frame(0));
+    fn frames_cycle_through_ten_distinct_steps() {
+        assert_eq!(FRAMES.len(), 10);
+        assert_eq!(frame(0), "⠋");
+        assert_eq!(frame(9), "⠏");
+        assert_eq!(frame(10), frame(0));
         assert_ne!(frame(0), frame(1));
     }
 }

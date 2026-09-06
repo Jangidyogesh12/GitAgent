@@ -27,27 +27,12 @@ BINDIR="${GITAGENT_BINDIR:-$HOME/.cargo/bin}"
 info()  { printf '\033[1;34m[gitagent]\033[0m %s\n' "$*"; }
 fatal() { printf '\033[1;31m[gitagent]\033[0m %s\n' "$*"; exit 1; }
 
-# --- square-spiral progress spinner ------------------------------------------
-# A block travels a 5x3 clockwise-inward square spiral while a download runs.
+# --- progress spinner ---------------------------------------------------------
+# Classic single-line spinner (braille dots) shown while a download runs.
 # The download stays in the foreground; the spinner loops in the background
 # and is stopped with spinner_stop once the download exits.
-_SPIRAL="0,0 1,0 2,0 3,0 4,0 4,1 4,2 3,2 2,2 1,2 0,2 0,1 1,1 2,1 3,1"
+_SPIN_FRAMES="⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏"
 _SPIN_PID=""; _SPIN_SENTINEL=""
-
-_spiral_frame() { # $1 = step index -> prints the 3-line grid
-  local step="$1" i=0 cell hx=-1 hy=-1 x y line
-  for cell in $_SPIRAL; do
-    if [ "$i" -eq "$step" ]; then hx="${cell%,*}"; hy="${cell#*,}"; fi
-    i=$((i + 1))
-  done
-  for y in 0 1 2; do
-    line=""
-    for x in 0 1 2 3 4; do
-      if [ "$x" -eq "$hx" ] && [ "$y" -eq "$hy" ]; then line="${line}█"; else line="${line}·"; fi
-    done
-    printf '%s\n' "$line"
-  done
-}
 
 spinner_start() { # $1 = message
   if [ ! -t 1 ]; then info "$1…"; return 0; fi
@@ -55,14 +40,12 @@ spinner_start() { # $1 = message
   _SPIN_SENTINEL="$(mktemp "$WORK/.spin.XXXXXX")"
   tput civis 2>/dev/null || true
   (
-    i=0; first=1
     while :; do
-      if [ "$first" -eq 0 ]; then printf '\033[3A\r'; fi
-      first=0
-      printf '%s …\n' "$_SPIN_MSG"
-      _spiral_frame "$i"
-      : > "${_SPIN_SENTINEL}.drew" 2>/dev/null || true
-      i=$(( (i + 1) % 15 )); sleep 0.08
+      for f in $_SPIN_FRAMES; do
+        printf '\r%s %s' "$_SPIN_MSG" "$f"
+        : > "${_SPIN_SENTINEL}.drew" 2>/dev/null || true
+        sleep 0.08
+      done
     done
   ) &
   _SPIN_PID=$!
@@ -75,7 +58,7 @@ spinner_stop() { # $1 = exit code, $2 = done message
     wait "$_SPIN_PID" 2>/dev/null || true
     _SPIN_PID=""
     tput cnorm 2>/dev/null || true
-    if [ -f "${_SPIN_SENTINEL}.drew" ]; then printf '\033[4A\r\033[J'; fi
+    if [ -f "${_SPIN_SENTINEL}.drew" ]; then printf '\r\033[K'; fi
     rm -f "$_SPIN_SENTINEL" "${_SPIN_SENTINEL}.drew" 2>/dev/null || true
   fi
   if [ "$code" -eq 0 ]; then info "✓ $msg"; else fatal "✗ $msg"; fi
