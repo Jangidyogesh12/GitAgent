@@ -126,7 +126,10 @@ jobs:
           mkdir -p "$STAGE"
           cp "target/${{ matrix.target }}/release/gitagent" "$STAGE/"
           tar czf "$STAGE.tar.gz" "$STAGE"
-          sha256sum "$STAGE.tar.gz" >> SHA256SUMS.txt
+          # Per-target filename: three legs upload same-named files, and the
+          # publish job's merge would collapse them into one (losing two
+          # legs' hashes). Unique names survive; publish combines them.
+          sha256sum "$STAGE.tar.gz" >> "SHA256SUMS-${{ matrix.target }}.txt"
 
       - name: Package (zip, Windows)
         if: matrix.archive == 'zip'
@@ -136,8 +139,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/gitagent.exe" $stage/
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
-          (Get-FileHash "$stage.zip" -Algorithm SHA256).Hash.ToLower() `
-            + "  $stage.zip" | Out-File -Append SHA256SUMS.txt
+          # .NET append with explicit LF: Out-File would write CRLF, which
+          # breaks the installer's grep on Unix. Per-target name (see above).
+          $line = (Get-FileHash "$stage.zip" -Algorithm SHA256).Hash.ToLower() `
+            + "  $stage.zip"
+          [System.IO.File]::AppendAllText("SHA256SUMS-${{ matrix.target }}.txt", $line + "`n")
 
       - name: Upload artifacts for publish job
         uses: actions/upload-artifact@v4
@@ -146,7 +152,7 @@ jobs:
           path: |
             gitagent-*.tar.gz
             gitagent-*.zip
-            SHA256SUMS.txt
+            SHA256SUMS-*.txt
 
   publish:
     name: publish GitHub Release
@@ -163,6 +169,12 @@ jobs:
         with:
           pattern: pkg-*
           merge-multiple: true
+
+      - name: Combine per-target checksums into one SHA256SUMS.txt
+        shell: bash
+        run: |
+          cat SHA256SUMS-*.txt | tr -d '\r' | sort -u > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: Create release + upload assets
         env:

@@ -83,9 +83,13 @@ cd "$WORK"
 # which always exists next to the assets.
 curl -fsSL -o SHA256SUMS.txt "$BASE/SHA256SUMS.txt" \
   || fatal "release $VER_LABEL not found at $BASE (has vX.Y.Z been tagged? see release.yml)"
+# Normalise line endings: a CRLF checksum file breaks the grep below.
+tr -d '\r' < SHA256SUMS.txt > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS.txt
 
 # Pick the one asset line matching our target triple.
-ASSET="$(grep -E "gitagent-.*-${TARGET}\\.tar\\.gz$" SHA256SUMS.txt | awk '{print $2}' | head -n 1)"
+# NOTE: `|| true` is load-bearing — without it, `set -o pipefail` + `set -e`
+# aborts the script right here on no-match, before the friendly fatal below.
+ASSET="$(grep -E "gitagent-.*-${TARGET}\\.tar\\.gz$" SHA256SUMS.txt | awk '{print $2}' | head -n 1 || true)"
 [ -n "$ASSET" ] || fatal "no $TARGET asset in $VER_LABEL (available: $(awk '{print $2}' SHA256SUMS.txt | tr '\n' ' '))"
 
 curl -fsSL -o "$ASSET" "$BASE/$ASSET" || fatal "download failed: $BASE/$ASSET"
