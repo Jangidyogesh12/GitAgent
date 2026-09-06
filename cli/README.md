@@ -13,6 +13,18 @@ flags, providers, REPL, plugins, and harness export.
 cargo install --path cli
 ```
 
+## Update & uninstall
+
+```bash
+gitagent update                          # latest prebuilt binary, in place
+gitagent update --version v0.2.0         # pin a release (or GITAGENT_VERSION)
+gitagent update --from-source            # cargo build from main (needs Rust)
+gitagent update --repo owner/name        # use a fork's releases (or GITAGENT_REPO)
+
+gitagent uninstall                       # remove the binary, keep ~/.gitagent
+gitagent uninstall --purge               # also remove ~/.gitagent (keys, plugins, caches)
+```
+
 ## Quick start
 
 ```bash
@@ -55,7 +67,7 @@ a rejected call prints `error: …` (never silent).
 
 | Flag | Short | Meaning |
 |---|---|---|
-| `--dir <path>` | `-d` | Agent directory (default: cwd; global — before or after subcommands) |
+| `--dir <path>` | `-d` | Agent directory (default: cwd; with `--repo` and no `--dir`: `./<repo-name>` derived from URL, git-clone style) |
 | `--model <spec>` | `-m` | Model override (see table above) |
 | `--prompt "..."` | `-p` | One-shot mode (ask once, exit — no REPL) |
 | `--env <name>` | `-e` | Reserved for `config/<name>.yaml` environments |

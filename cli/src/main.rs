@@ -14,9 +14,9 @@
 //! HOW IT WORKS:
 //!   * Flag parsing: clap `Cli` derives `--dir/--model/--prompt/--env/--repo/
 //!     --pat/--session/--permission-mode/--allow-tool/--deny-tool` plus the
-//!     `plugin` and `integrations` subcommands.
-//!   * Subcommand shortcut: `plugin` and `integrations` dispatch to their
-//!     handler modules immediately, before any agent loading.
+//!     `plugin`, `integrations`, `update` and `uninstall` subcommands.
+//!   * Subcommand shortcut: `plugin`, `integrations`, `update` and `uninstall`
+//!     dispatch to their handler modules immediately, before any agent loading.
 //!   * Env stack: `helpers::load_env_stack()` loads `~/.gitagent/.env` then
 //!     `<dir>/.env`, with the agent-local file winning.
 //!   * Session vs scaffold: `--repo` requires a token (`--pat` or
@@ -56,6 +56,8 @@ mod plugin_cmd;
 mod render;
 mod repl;
 mod scaffold;
+mod uninstall_cmd;
+mod update_cmd;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -69,9 +71,9 @@ use std::path::PathBuf;
     about = "Git-native AI agent (chat in a terminal)"
 )]
 struct Cli {
-    /// Agent directory (default: current folder).
-    #[arg(long, short = 'd', default_value = ".", global = true)]
-    dir: PathBuf,
+    /// Agent directory (default: current folder; with --repo: ./<repo-name> derived from URL).
+    #[arg(long, short = 'd', global = true)]
+    dir: Option<PathBuf>,
     /// Model override, e.g. anthropic:claude-sonnet-4-6.
     #[arg(long, short = 'm')]
     model: Option<String>,
@@ -132,19 +134,60 @@ enum Commands {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Update gitagent to the latest release (reinstalls in place).
+    Update {
+        /// Release tag (default: latest). Also via GITAGENT_VERSION.
+        #[arg(long)]
+        version: Option<String>,
+        /// Build from source with cargo instead of the prebuilt binary.
+        #[arg(long)]
+        from_source: bool,
+        /// Releases repo `owner/name` (default: Jangidyogesh12/GitAgent).
+        #[arg(long)]
+        repo: Option<String>,
+    },
+    /// Uninstall gitagent (removes the binary).
+    Uninstall {
+        /// Also remove the global ~/.gitagent dir (keys, plugins, caches).
+        #[arg(long)]
+        purge: bool,
+    },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    // `gitagent plugin ...` / `gitagent integrations ...` shortcut first.
+    // Effective dir: explicit --dir wins; else with --repo derive ./<repo-name>
+    // (git-clone style) so bare `gitagent --repo <url>` never tries `clone ... .`;
+    // else "." (local mode / subcommands).
+    let repo_derived_dir: Option<PathBuf> = cli
+        .repo
+        .as_deref()
+        .map(default_repo_dir)
+        .filter(|_| cli.dir.is_none());
+    let cli_dir: PathBuf = cli
+        .dir
+        .clone()
+        .or(repo_derived_dir.clone())
+        .unwrap_or_else(|| PathBuf::from("."));
+    // `gitagent plugin|integrations|update|uninstall ...` shortcuts first.
     match &cli.command {
+        Some(Commands::Update {
+            version,
+            from_source,
+            repo,
+        }) => {
+            return update_cmd::run(version.as_deref(), *from_source, repo.as_deref());
+        }
+        Some(Commands::Uninstall { purge }) => {
+            return uninstall_cmd::run(*purge);
+        }
         Some(Commands::Plugin {
             action,
             target,
             force,
         }) => {
-            return plugin_cmd::run(&cli.dir, action, target.as_deref(), *force);
+            return plugin_cmd::run(cli_dir.as_path(), action, target.as_deref(), *force);
         }
         Some(Commands::Integrations {
             action,
@@ -152,7 +195,7 @@ async fn main() -> Result<()> {
             out,
         }) => {
             return integrations_cmd::run(
-                &cli.dir,
+                cli_dir.as_path(),
                 action.as_deref(),
                 format.as_deref(),
                 out.clone(),
@@ -162,7 +205,10 @@ async fn main() -> Result<()> {
     }
 
     // Env stack: ~/.gitagent/.env then <dir>/.env (later wins).
-    engine::helpers::load_env_stack(&cli.dir);
+    if let Some(derived) = &repo_derived_dir {
+        println!("using dir: {}", derived.display());
+    }
+    engine::helpers::load_env_stack(cli_dir.as_path());
 
     // Repo mode XOR local dir mode.
     let (work_dir, session) = match &cli.repo {
@@ -175,7 +221,7 @@ async fn main() -> Result<()> {
             if token.is_none() {
                 anyhow::bail!("--repo needs --pat (or GITHUB_TOKEN / GIT_TOKEN)");
             }
-            let dir = cli.dir.clone();
+            let dir = cli_dir.clone();
             let opts = engine::session::SessionOptions {
                 url: url.clone(),
                 token,
@@ -187,15 +233,18 @@ async fn main() -> Result<()> {
             (s.dir.clone(), Some(s))
         }
         None => {
-            scaffold::ensure_repo(&cli.dir, cli.model.as_deref())?;
-            (cli.dir.clone(), None)
+            scaffold::ensure_repo(cli_dir.as_path(), cli.model.as_deref())?;
+            (cli_dir.clone(), None)
         }
     };
 
     // Resolve model + startup API-key check.
-    let loaded =
-        engine::loader::load_agent(&work_dir, cli.model.as_deref(), cli.session.as_deref())
-            .context("loading agent")?;
+    let loaded = engine::loader::load_agent(
+        work_dir.as_path(),
+        cli.model.as_deref(),
+        cli.session.as_deref(),
+    )
+    .context("loading agent")?;
     api_key_check(&loaded.model_specs)?;
     print_banner(&loaded);
 
@@ -283,4 +332,66 @@ fn print_banner(loaded: &engine::loader::LoadedAgent) {
         "skills: {}  session: {}",
         loaded.skill_count, loaded.session_id
     );
+}
+
+/// Derive a clone dir from a repo URL (git-clone style): last path segment,
+/// trailing `/` + `.git` stripped, `:` handled for SSH, sanitised, fallback
+/// `repo-session`. Relative so it resolves under cwd (e.g. `./my-agent`).
+///
+/// # Example
+/// ```rust,ignore
+/// assert_eq!(default_repo_dir("https://github.com/o/my-agent.git"), PathBuf::from("my-agent"));
+/// ```
+fn default_repo_dir(url: &str) -> PathBuf {
+    let s = url.trim().trim_end_matches('/');
+    let after_scheme = s.rsplit("://").next().unwrap_or(s);
+    let after_host = after_scheme
+        .rsplit_once(':')
+        .map(|(_, p)| p)
+        .filter(|p| !p.contains('/'))
+        .unwrap_or(after_scheme);
+    let last = after_host.rsplit('/').next().unwrap_or(after_host);
+    let base = last.strip_suffix(".git").unwrap_or(last);
+    let clean: String = base
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let clean = clean.trim_matches(|c| c == '-' || c == '.');
+    if clean.is_empty() {
+        PathBuf::from("repo-session")
+    } else {
+        PathBuf::from(clean)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derives_repo_basename() {
+        assert_eq!(
+            default_repo_dir("https://github.com/Jangidyogesh12/gitagent-webscraper.git"),
+            PathBuf::from("gitagent-webscraper")
+        );
+        assert_eq!(
+            default_repo_dir("https://github.com/org/my-agent"),
+            PathBuf::from("my-agent")
+        );
+        assert_eq!(
+            default_repo_dir("https://github.com/org/my-agent/"),
+            PathBuf::from("my-agent")
+        );
+        assert_eq!(
+            default_repo_dir("git@github.com:org/my-agent.git"),
+            PathBuf::from("my-agent")
+        );
+        assert_eq!(default_repo_dir(""), PathBuf::from("repo-session"));
+    }
 }

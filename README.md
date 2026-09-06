@@ -60,6 +60,12 @@ curl -fsSL https://raw.githubusercontent.com/Jangidyogesh12/GitAgent/main/instal
 # or: cargo install --path cli
 ```
 
+```bash
+gitagent update              # reinstall latest release in place
+gitagent update --from-source  # cargo build instead of prebuilt binary
+gitagent uninstall [--purge] # remove the binary (purge also drops ~/.gitagent)
+```
+
 Releases are tag-triggered: push freely to `main` (only CI runs), and
 when ready bump `cli/Cargo.toml`, commit, then
 `git tag vX.Y.Z && git push origin main vX.Y.Z` — the tag builds
@@ -119,7 +125,7 @@ token** from the remote URL.
 
 | Flag | Short | Description |
 |---|---|---|
-| `--dir <path>` | `-d` | Agent directory (default: cwd; global flag) |
+| `--dir <path>` | `-d` | Agent directory (default: cwd; with `--repo` and no `--dir`: `./<repo-name>` from URL) |
 | `--repo <url>` | `-r` | Git repo URL to clone and work on |
 | `--pat <token>` | | Token (or set `GITHUB_TOKEN` / `GIT_TOKEN`) |
 | `--session <branch>` | | Resume an existing session branch |
@@ -131,7 +137,9 @@ token** from the remote URL.
 | `--deny-tool <rule>` | | Repeatable deny rule, e.g. `cli(rm -rf)` |
 
 Subcommands: `gitagent plugin …` (see [Plugins](#plugins)),
-`gitagent integrations …` (see [Harness interop](#harness-interop)).
+`gitagent integrations …` (see [Harness interop](#harness-interop)),
+`gitagent update [--version vX.Y.Z] [--from-source]`,
+`gitagent uninstall [--purge]`.
 
 ### REPL commands
 
