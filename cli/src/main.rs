@@ -56,6 +56,7 @@ mod plugin_cmd;
 mod render;
 mod repl;
 mod scaffold;
+mod spinner;
 mod uninstall_cmd;
 mod update_cmd;
 

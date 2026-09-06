@@ -27,6 +27,8 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 
+use crate::spinner::Spinner;
+
 /// Remove the gitagent binary (and optionally global data).
 ///
 /// # Description
@@ -36,22 +38,26 @@ use std::path::PathBuf;
 /// them + exits non-zero).
 pub fn run(purge: bool) -> Result<()> {
     let exe = std::env::current_exe().context("locating the gitagent binary")?;
-    println!("removing {}", exe.display());
-    std::fs::remove_file(&exe).with_context(|| {
-        format!(
-            "removing {} failed — try: rm \"{}\"",
+    let spinner = Spinner::start("Removing gitagent");
+    if let Err(e) = std::fs::remove_file(&exe) {
+        spinner.fail("uninstall failed");
+        anyhow::bail!(
+            "removing {} failed ({e}) — try: rm \"{}\"",
             exe.display(),
             exe.display()
-        )
-    })?;
-    println!("uninstalled gitagent ({})", exe.display());
+        );
+    }
+    spinner.finish(&format!("uninstalled gitagent ({})", exe.display()));
 
     if purge {
         let global = global_dir();
         if global.exists() {
-            std::fs::remove_dir_all(&global)
-                .with_context(|| format!("removing {} failed", global.display()))?;
-            println!("purged {}", global.display());
+            let purge_spin = Spinner::start("Purging ~/.gitagent");
+            if let Err(e) = std::fs::remove_dir_all(&global) {
+                purge_spin.fail("purge failed");
+                anyhow::bail!("removing {} failed ({e})", global.display());
+            }
+            purge_spin.finish(&format!("purged {}", global.display()));
         } else {
             println!("nothing to purge at {}", global.display());
         }
